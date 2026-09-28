@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Stretchify</string>
+    <string name="pause">Pause</string>
+    <string name="resume">Resume</string>
+    <string name="stop">Stop</string>
+    <string name="notification_stretching">Stretching</string>
+    <string name="notification_resting">Resting</string>
+    <string name="notification_paused">Paused</string>
+    <string name="notification_completed">Routine complete</string>
+    <string name="notification_preparing">Preparing routine</string>
+    <string name="session_notification_channel">Active routines</string>
+    <string name="session_notification_channel_description">Timer controls and progress for an active routine</string>
+</resources>
