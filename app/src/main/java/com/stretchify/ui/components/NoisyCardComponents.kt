@@ -29,6 +29,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.stretchify.ui.theme.FilledCardStyle
+import com.stretchify.ui.theme.LocalColorfulDark
 import com.stretchify.ui.theme.LocalColorfulLight
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -39,7 +40,7 @@ import kotlin.math.hypot
 import kotlin.math.max
 
 private const val NOISE_PHASE_COUNT = 4
-private const val NOISE_PHASE_DURATION_MILLIS = 800L
+private const val NOISE_PHASE_DURATION_MILLIS = 400L
 private const val FALLBACK_LONGEST_EDGE = 240f
 
 private val LocalNoisyCardPhase = compositionLocalOf { 0 }
@@ -47,7 +48,8 @@ private val LocalNoisyCardPhase = compositionLocalOf { 0 }
 @Composable
 internal fun NoisyCardAnimationHost(content: @Composable () -> Unit)
 {
-    val isAnimationAvailable = LocalColorfulLight.current && Build.VERSION.SDK_INT >= 33
+    val isAnimationAvailable = (LocalColorfulLight.current || LocalColorfulDark.current) &&
+        Build.VERSION.SDK_INT >= 33
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var phase by remember { mutableIntStateOf(0) }
     LaunchedEffect(isAnimationAvailable, lifecycle)

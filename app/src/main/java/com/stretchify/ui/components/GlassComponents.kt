@@ -95,8 +95,9 @@ fun GlassCard(
     val shape = RoundedCornerShape(24.dp)
     val isLiquid = LocalLiquidPreset.current != null
     val isColorfulLight = LocalColorfulLight.current
-    val isFilled = (isColorfulLight || LocalColorfulDark.current) && filledStyle != null
-    val hasNoisyBackground = isColorfulLight && filledStyle != null
+    val isColorfulDark = LocalColorfulDark.current
+    val isFilled = (isColorfulLight || isColorfulDark) && filledStyle != null
+    val hasNoisyBackground = (isColorfulLight || isColorfulDark) && filledStyle != null
     Surface(
         modifier = modifier
             .fillMaxWidth()

@@ -86,16 +86,29 @@ fun filledCardStyle(isWarm: Boolean, seed: Int, isDark: Boolean = false): Filled
 {
     if (isDark)
     {
-        val baseColor = if (isWarm) 0xFFB84F35.toInt() else 0xFF326CA8.toInt()
-        val baseHsv = FloatArray(3)
-        android.graphics.Color.colorToHSV(baseColor, baseHsv)
-        val hueVariation = Math.floorMod(seed, 1001) / 1000f * 10f - 5f
-        val saturationVariation = Math.floorMod(seed / 1001, 1001) / 1000f * 0.06f - 0.03f
-        baseHsv[0] += hueVariation
-        baseHsv[1] = (baseHsv[1] + saturationVariation).coerceIn(0f, 1f)
-        baseHsv[2] -= 0.11f
-        val color = Color(android.graphics.Color.HSVToColor(baseHsv))
-        return FilledCardStyle(color, color, color, Color.White, Color(0xFFFDF8F5), seed)
+        val palettes = listOf(
+            FilledCardStyle(
+                Color(0xFF452936), Color(0xFFB94D79), Color(0xFF24151D),
+                Color.White, Color(0xFFE8C9D5), seed
+            ),
+            FilledCardStyle(
+                Color(0xFF493126), Color(0xFFC96D4C), Color(0xFF281A14),
+                Color.White, Color(0xFFE9CFC4), seed
+            ),
+            FilledCardStyle(
+                Color(0xFF34294A), Color(0xFF8464B8), Color(0xFF1D172B),
+                Color.White, Color(0xFFD9CEE9), seed
+            ),
+            FilledCardStyle(
+                Color(0xFF263A4A), Color(0xFF4E89B5), Color(0xFF151F2A),
+                Color.White, Color(0xFFCADCE8), seed
+            ),
+            FilledCardStyle(
+                Color(0xFF253D36), Color(0xFF4C957F), Color(0xFF14231F),
+                Color.White, Color(0xFFC8E1D8), seed
+            )
+        )
+        return palettes[Math.floorMod(seed, palettes.size)]
     }
 
     val palettes = listOf(

@@ -20,15 +20,18 @@ class NoisyCardRenderingTest
     fun staticFallbackIsSizedAndDeterministic()
     {
         val size = Size(320f, 160f)
-        val style = filledCardStyle(false, 7)
-        val first = createStaticNoisyGradient(style, size).asAndroidBitmap()
-        val second = createStaticNoisyGradient(style, size).asAndroidBitmap()
-        val differentNoise = createStaticNoisyGradient(filledCardStyle(false, 12), size).asAndroidBitmap()
+        listOf(false, true).forEach { isDark ->
+            val style = filledCardStyle(false, 7, isDark)
+            val first = createStaticNoisyGradient(style, size).asAndroidBitmap()
+            val second = createStaticNoisyGradient(style, size).asAndroidBitmap()
+            val differentNoise = createStaticNoisyGradient(filledCardStyle(false, 12, isDark), size)
+                .asAndroidBitmap()
 
-        assertEquals(240, first.width)
-        assertEquals(120, first.height)
-        assertTrue(first.sameAs(second))
-        assertFalse(first.sameAs(differentNoise))
+            assertEquals(240, first.width)
+            assertEquals(120, first.height)
+            assertTrue(first.sameAs(second))
+            assertFalse(first.sameAs(differentNoise))
+        }
     }
 }
 
@@ -40,9 +43,11 @@ class NoisyCardShaderTest
     fun shaderCompilesAndAcceptsEveryPaletteAndPhase()
     {
         val renderer = NoisyCardShader()
-        repeat(5) { palette ->
-            repeat(4) { phase ->
-                renderer.update(filledCardStyle(false, palette), Size(1080f, 540f), phase)
+        listOf(false, true).forEach { isDark ->
+            repeat(5) { palette ->
+                repeat(4) { phase ->
+                    renderer.update(filledCardStyle(false, palette, isDark), Size(1080f, 540f), phase)
+                }
             }
         }
     }
