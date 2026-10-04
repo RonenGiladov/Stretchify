@@ -34,7 +34,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 
 @Composable
-fun SessionProgressCard(sessionState: SessionState, moments: Flow<SessionProgressMoment>)
+fun SessionProgressCard(
+    sessionState: SessionState,
+    moments: Flow<SessionProgressMoment>,
+    stepLabel: String = "Stretch"
+)
 {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val pulse = remember { Animatable(1f) }
@@ -76,7 +80,7 @@ fun SessionProgressCard(sessionState: SessionState, moments: Flow<SessionProgres
         scaleY = pulse.value
     }) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Stretch ${sessionState.currentStepIndex + 1} of ${sessionState.routine.steps.size}",
+            Text("$stepLabel ${sessionState.currentStepIndex + 1} of ${sessionState.routine.steps.size}",
                 fontWeight = FontWeight.SemiBold)
             LinearProgressIndicator(
                 progress = { completedSteps.toFloat() / sessionState.routine.steps.size },
