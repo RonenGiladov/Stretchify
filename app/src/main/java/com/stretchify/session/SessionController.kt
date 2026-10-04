@@ -6,6 +6,8 @@ import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import com.stretchify.data.StretchifyRepository
 import com.stretchify.data.GoalCatalog
+import com.stretchify.data.DelightEvaluator
+import com.stretchify.data.DelightPresentation
 import com.stretchify.model.CompletionRecord
 import com.stretchify.model.GoalRoutine
 import com.stretchify.model.StretchRoutine
@@ -18,6 +20,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -28,7 +33,8 @@ data class SavedSessionCompletion(
     val afterRecords: List<CompletionRecord>,
     val goals: List<GoalRoutine>,
     val firstDayOfWeek: DayOfWeek,
-    val awardedMilestoneKeys: Set<String>
+    val awardedMilestoneKeys: Set<String>,
+    val delight: DelightPresentation
 )
 
 class SessionController(
@@ -43,6 +49,11 @@ class SessionController(
     private var timerJob: Job? = null
     private var activeSessionId = UUID.randomUUID().toString()
     private var nextTickAtMillis = 0L
+    private var completedTimedStretchCount = 0
+    private val mutableProgressMoments = MutableSharedFlow<SessionProgressMoment>(
+        extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val progressMoments = mutableProgressMoments.asSharedFlow()
 
     private val mutableState = MutableStateFlow(sessionEngine.initialState())
     val state: StateFlow<SessionState> = mutableState.asStateFlow()
@@ -56,6 +67,7 @@ class SessionController(
     init
     {
         repository.initializeDelight(mutableCompletionRecords.value)
+        repository.initializeRewardCollection(mutableCompletionRecords.value)
     }
 
     fun prepare(routine: StretchRoutine)
@@ -72,6 +84,7 @@ class SessionController(
         mutableSavedCompletion.value = null
         alertController.release()
         activeSessionId = UUID.randomUUID().toString()
+        completedTimedStretchCount = 0
         mutableState.value = sessionEngine.startSession(sessionEngine.initialState(), countdownSeconds)
         startService()
         startTimer()
@@ -167,11 +180,18 @@ class SessionController(
 
         if (shouldAlert)
         {
-            SessionAlertPolicy.alertForTransition(
+            val alert = SessionAlertPolicy.alertForTransition(
                 previousState,
                 nextState,
                 repository.loadAlertTiming()
-            )?.let { alertController.play(it, repository.loadAlertMode()) }
+            )
+            if (alert != null) alertController.play(alert, repository.loadAlertMode())
+            if (alert == SessionAlert.StretchComplete)
+            {
+                completedTimedStretchCount += 1
+                mutableProgressMoments.tryEmit(SessionProgressMoment(activeSessionId,
+                    previousState.currentStepIndex, completedTimedStretchCount, nextState.routine.steps.size))
+            }
         }
 
         if (nextState.phase == SessionPhase.Completed)
@@ -197,12 +217,15 @@ class SessionController(
         )
         val beforeRecords = mutableCompletionRecords.value
         val records = beforeRecords + record
+        val goals = GoalCatalog.build(repository.loadCustomGoals(), repository.loadGoalOverrides())
+        val firstDayOfWeek = repository.loadFirstDayOfWeek()
+        val awardedKeys = repository.loadDelightMilestones()
+        val delight = DelightEvaluator.evaluate(record, beforeRecords, records, goals, firstDayOfWeek, awardedKeys)
         repository.saveCompletionRecords(records)
+        repository.awardSessionRewards(delight.milestoneKeys, record.completedAtMillis)
         mutableCompletionRecords.value = records
         mutableSavedCompletion.value = SavedSessionCompletion(
-            record, beforeRecords, records,
-            GoalCatalog.build(repository.loadCustomGoals(), repository.loadGoalOverrides()),
-            repository.loadFirstDayOfWeek(), repository.loadDelightMilestones()
+            record, beforeRecords, records, goals, firstDayOfWeek, awardedKeys, delight
         )
         StretchWidgetProvider.updateAll(context)
     }

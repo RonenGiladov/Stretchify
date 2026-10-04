@@ -17,6 +17,8 @@ data class DelightPresentation(
 
 object DelightEvaluator
 {
+    val TOTAL_ROUTINE_MILESTONES = listOf(5, 10, 25, 50, 100)
+
     fun evaluate(
         completion: CompletionRecord,
         beforeRecords: List<CompletionRecord>,
@@ -61,6 +63,15 @@ object DelightEvaluator
             keys.add("streak:$streak")
             achievements.add("$streak days of showing up for yourself.")
         }
+        val beforeCount = beforeRecords.count { it.completedAtMillis <= now }
+        val afterCount = afterRecords.count { it.completedAtMillis <= now }
+        val totalMilestones = TOTAL_ROUTINE_MILESTONES.filter {
+            beforeCount < it && afterCount >= it && "total:$it" !in awardedMilestoneKeys
+        }
+        totalMilestones.forEach { threshold ->
+            keys.add("total:$threshold")
+            achievements.add("$threshold moments of making time for yourself.")
+        }
         val ordinaryMessages = listOf(
             "You made time for yourself.", "A small pause, just for you.", "This time was yours."
         )
@@ -69,6 +80,7 @@ object DelightEvaluator
             hasGoal -> "You met your goal this week."
             isFirst -> "Your first moment for yourself."
             isStreak -> "$streak days of showing up for yourself."
+            totalMilestones.isNotEmpty() -> "${totalMilestones.last()} moments of making time for yourself."
             else -> ordinaryMessages[(afterRecords.size - 1).coerceAtLeast(0) % ordinaryMessages.size]
         }
         return DelightPresentation(completion.id, headline, achievements.filter { it != headline },
@@ -86,6 +98,7 @@ object DelightEvaluator
         val pastRecords = records.filter { it.completedAtMillis <= nowMillis }
         val keys = mutableSetOf<String>()
         if (pastRecords.isNotEmpty()) keys.add("first")
+        TOTAL_ROUTINE_MILESTONES.filter { pastRecords.size >= it }.forEach { keys.add("total:$it") }
         var previousDate: LocalDate? = null
         var streak = 0
         pastRecords.map { Instant.ofEpochMilli(it.completedAtMillis).atZone(zoneId).toLocalDate() }
