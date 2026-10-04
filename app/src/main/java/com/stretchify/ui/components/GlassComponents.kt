@@ -24,85 +24,104 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
+import com.stretchify.ui.theme.FilledCardStyle
 import com.stretchify.ui.theme.LocalColorfulLight
 import com.stretchify.ui.theme.LocalColorfulDark
 import com.stretchify.ui.theme.LocalFilledCard
+import com.stretchify.ui.theme.LocalFilledCardAccentColor
+import com.stretchify.ui.theme.LocalFilledCardSecondaryColor
 import com.stretchify.ui.theme.LocalLiquidPreset
 
 @Composable
 fun GlassBackground(content: @Composable BoxScope.() -> Unit)
 {
-    if (LocalLiquidPreset.current != null)
+    NoisyCardAnimationHost(content =
     {
-        Box(Modifier.fillMaxSize())
+        if (LocalLiquidPreset.current != null)
         {
-            CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground)
+            Box(Modifier.fillMaxSize())
             {
-                content()
+                CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground)
+                {
+                    content()
+                }
             }
         }
-        return
-    }
-    val colors = MaterialTheme.colorScheme
-    val isColorfulLight = LocalColorfulLight.current
-    val isColorfulDark = LocalColorfulDark.current
-    val gradientColors = if (isColorfulLight)
-    {
-        listOf(Color(0xFFE6F8EF), Color(0xFFD5F2E5), Color(0xFFCDEFE7))
-    }
-    else if (isColorfulDark)
-    {
-        listOf(Color(0xFF142B49), Color(0xFF24272B), Color(0xFF2B2119))
-    }
-    else
-    {
-        listOf(
-            colors.background,
-            lerp(colors.background, colors.primary, 0.10f),
-            lerp(colors.background, colors.secondary, 0.14f)
-        )
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                if (isColorfulLight || isColorfulDark) Brush.verticalGradient(gradientColors)
-                else Brush.linearGradient(gradientColors)
-            )
-    ) {
-        CompositionLocalProvider(LocalContentColor provides colors.onBackground) {
-            content()
+        else
+        {
+            val colors = MaterialTheme.colorScheme
+            val isColorfulLight = LocalColorfulLight.current
+            val isColorfulDark = LocalColorfulDark.current
+            val gradientColors = if (isColorfulLight)
+            {
+                listOf(Color(0xFFE6F8EF), Color(0xFFD5F2E5), Color(0xFFCDEFE7))
+            }
+            else if (isColorfulDark)
+            {
+                listOf(Color(0xFF142B49), Color(0xFF24272B), Color(0xFF2B2119))
+            }
+            else
+            {
+                listOf(
+                    colors.background,
+                    lerp(colors.background, colors.primary, 0.10f),
+                    lerp(colors.background, colors.secondary, 0.14f)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        if (isColorfulLight || isColorfulDark) Brush.verticalGradient(gradientColors)
+                        else Brush.linearGradient(gradientColors)
+                    )
+            ) {
+                CompositionLocalProvider(LocalContentColor provides colors.onBackground) {
+                    content()
+                }
+            }
         }
-    }
+    })
 }
 
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(20.dp),
-    filledColor: Color? = null,
+    filledStyle: FilledCardStyle? = null,
     content: @Composable () -> Unit
 )
 {
     val shape = RoundedCornerShape(24.dp)
     val isLiquid = LocalLiquidPreset.current != null
-    val isFilled = (LocalColorfulLight.current || LocalColorfulDark.current) && filledColor != null
+    val isColorfulLight = LocalColorfulLight.current
+    val isFilled = (isColorfulLight || LocalColorfulDark.current) && filledStyle != null
+    val hasNoisyBackground = isColorfulLight && filledStyle != null
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .then(if (isLiquid) Modifier.clip(shape).liquidSurface(24.dp, isGlass = true) else Modifier)
+            .then(
+                if (hasNoisyBackground) Modifier.clip(shape).noisyCardBackground(filledStyle!!)
+                else Modifier
+            )
             .border(
                 width = if (isFilled) 0.dp else 1.dp,
                 color = if (isFilled || isLiquid) Color.Transparent else glassBorderColor(),
                 shape = shape
             ),
-        color = if (isLiquid) Color.Transparent else if (isFilled) filledColor!! else glassSurfaceColor(),
-        contentColor = if (isFilled) Color.White else MaterialTheme.colorScheme.onSurface,
+        color = if (isLiquid || hasNoisyBackground) Color.Transparent
+        else if (isFilled) filledStyle!!.bandColor else glassSurfaceColor(),
+        contentColor = if (isFilled) filledStyle!!.contentColor else MaterialTheme.colorScheme.onSurface,
         shape = shape,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {
-        CompositionLocalProvider(LocalFilledCard provides isFilled) {
+        CompositionLocalProvider(
+            LocalFilledCard provides isFilled,
+            LocalFilledCardAccentColor provides (filledStyle?.contentColor ?: Color.White),
+            LocalFilledCardSecondaryColor provides (filledStyle?.secondaryContentColor ?: Color(0xFFFDF8F5))
+        ) {
             androidx.compose.foundation.layout.Column(modifier = Modifier.padding(contentPadding)) {
                 content()
             }

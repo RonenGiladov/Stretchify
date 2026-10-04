@@ -52,7 +52,17 @@ val LocalColorfulDark = compositionLocalOf { false }
 val LocalLiquidPreset = compositionLocalOf<LiquidPreset?> { null }
 val LocalGlassFinish = compositionLocalOf { GlassFinish.Clear }
 val LocalFilledCard = compositionLocalOf { false }
-val FILLED_CARD_SECONDARY_COLOR = Color(0xFFFDF8F5)
+val LocalFilledCardAccentColor = compositionLocalOf { Color.White }
+val LocalFilledCardSecondaryColor = compositionLocalOf { Color(0xFFFDF8F5) }
+
+data class FilledCardStyle(
+    val centerColor: Color,
+    val bandColor: Color,
+    val outerColor: Color,
+    val contentColor: Color,
+    val secondaryContentColor: Color,
+    val noiseSeed: Int
+)
 
 private val StretchifyColorfulLightColorScheme = StretchifyLightColorScheme.copy(
     primary = Color(0xFF285A46),
@@ -72,17 +82,45 @@ private val StretchifyColorfulDarkColorScheme = StretchifyDarkColorScheme.copy(
 
 private val NunitoFontFamily = FontFamily(Font(R.font.nunito))
 
-fun filledCardColor(isWarm: Boolean, seed: Int, isDark: Boolean = false): Color
+fun filledCardStyle(isWarm: Boolean, seed: Int, isDark: Boolean = false): FilledCardStyle
 {
-    val baseColor = if (isWarm) 0xFFB84F35.toInt() else 0xFF326CA8.toInt()
-    val baseHsv = FloatArray(3)
-    android.graphics.Color.colorToHSV(baseColor, baseHsv)
-    val hueVariation = Math.floorMod(seed, 1001) / 1000f * 10f - 5f
-    val saturationVariation = Math.floorMod(seed / 1001, 1001) / 1000f * 0.06f - 0.03f
-    baseHsv[0] += hueVariation
-    baseHsv[1] = (baseHsv[1] + saturationVariation).coerceIn(0f, 1f)
-    baseHsv[2] -= if (isDark) 0.11f else 0.035f
-    return Color(android.graphics.Color.HSVToColor(baseHsv))
+    if (isDark)
+    {
+        val baseColor = if (isWarm) 0xFFB84F35.toInt() else 0xFF326CA8.toInt()
+        val baseHsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(baseColor, baseHsv)
+        val hueVariation = Math.floorMod(seed, 1001) / 1000f * 10f - 5f
+        val saturationVariation = Math.floorMod(seed / 1001, 1001) / 1000f * 0.06f - 0.03f
+        baseHsv[0] += hueVariation
+        baseHsv[1] = (baseHsv[1] + saturationVariation).coerceIn(0f, 1f)
+        baseHsv[2] -= 0.11f
+        val color = Color(android.graphics.Color.HSVToColor(baseHsv))
+        return FilledCardStyle(color, color, color, Color.White, Color(0xFFFDF8F5), seed)
+    }
+
+    val palettes = listOf(
+        FilledCardStyle(
+            Color(0xFFF3ECDE), Color(0xFFE581A2), Color(0xFFFCE3EC),
+            Color(0xFF78324C), Color(0xFF87465D), seed
+        ),
+        FilledCardStyle(
+            Color(0xFFF5EEDD), Color(0xFFE99673), Color(0xFFFBE0D2),
+            Color(0xFF713A28), Color(0xFF84513E), seed
+        ),
+        FilledCardStyle(
+            Color(0xFFF1ECDF), Color(0xFF9A82C6), Color(0xFFEAE0F6),
+            Color(0xFF493670), Color(0xFF604F80), seed
+        ),
+        FilledCardStyle(
+            Color(0xFFEFF0E2), Color(0xFF6E9FCB), Color(0xFFDCECF8),
+            Color(0xFF294E70), Color(0xFF45647E), seed
+        ),
+        FilledCardStyle(
+            Color(0xFFF1EDDF), Color(0xFF65AD96), Color(0xFFDCF2E8),
+            Color(0xFF275848), Color(0xFF426D5F), seed
+        )
+    )
+    return palettes[Math.floorMod(seed, palettes.size)]
 }
 
 @Composable

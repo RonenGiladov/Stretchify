@@ -144,11 +144,12 @@ import com.stretchify.ui.components.GlassTimerPanel
 import com.stretchify.ui.components.TrainerMessageBubble
 import com.stretchify.ui.components.navigationGlassBorderColor
 import com.stretchify.ui.components.navigationHazeStyle
-import com.stretchify.ui.theme.filledCardColor
+import com.stretchify.ui.theme.filledCardStyle
 import com.stretchify.ui.theme.LocalFilledCard
+import com.stretchify.ui.theme.LocalFilledCardAccentColor
+import com.stretchify.ui.theme.LocalFilledCardSecondaryColor
 import com.stretchify.ui.theme.LocalColorfulLight
 import com.stretchify.ui.theme.LocalColorfulDark
-import com.stretchify.ui.theme.FILLED_CARD_SECONDARY_COLOR
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
 import dev.chrisbanes.haze.hazeChild
@@ -858,7 +859,7 @@ private fun DashboardCardContent(
             .testTag("dashboard-card-${card.id}")
             .then(cardInteractionModifier),
         contentPadding = PaddingValues(cardPadding),
-        filledColor = filledCardColor(
+        filledStyle = filledCardStyle(
             card.type == DashboardCardType.Routine || card.type == DashboardCardType.Goal,
             card.colorSeed ?: card.id.hashCode(),
             LocalColorfulDark.current
@@ -912,8 +913,10 @@ private fun DashboardCardContent(
                                         "$weeklySessions of $WEEKLY_SESSION_GOAL sessions this week"
                                 }
                                 .testTag("weekly-progress-ring"),
-                            color = if (LocalFilledCard.current) Color.White else MaterialTheme.colorScheme.primary,
-                            trackColor = if (LocalFilledCard.current) Color.White.copy(alpha = 0.32f)
+                            color = if (LocalFilledCard.current) LocalFilledCardAccentColor.current
+                            else MaterialTheme.colorScheme.primary,
+                            trackColor = if (LocalFilledCard.current)
+                                LocalFilledCardAccentColor.current.copy(alpha = 0.24f)
                             else MaterialTheme.colorScheme.surfaceVariant,
                             strokeWidth = 5.dp
                         )
@@ -981,11 +984,12 @@ private fun InlineCardEditControls(
     val handleColor by animateColorAsState(
         targetValue = if (isResizing)
         {
-            if (LocalFilledCard.current) Color.White else MaterialTheme.colorScheme.primary
+            if (LocalFilledCard.current) LocalFilledCardAccentColor.current
+            else MaterialTheme.colorScheme.primary
         }
         else
         {
-            if (LocalFilledCard.current) Color.White.copy(alpha = 0.20f)
+            if (LocalFilledCard.current) LocalFilledCardAccentColor.current.copy(alpha = 0.16f)
             else MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
         },
         animationSpec = tween(durationMillis = 140),
@@ -994,12 +998,14 @@ private fun InlineCardEditControls(
     val iconColor by animateColorAsState(
         targetValue = if (isResizing)
         {
-            if (LocalFilledCard.current) MaterialTheme.colorScheme.primary
+            if (LocalFilledCard.current && LocalColorfulLight.current) Color.White
+            else if (LocalFilledCard.current) MaterialTheme.colorScheme.primary
             else MaterialTheme.colorScheme.onPrimary
         }
         else
         {
-            if (LocalFilledCard.current) Color.White else MaterialTheme.colorScheme.primary
+            if (LocalFilledCard.current) LocalFilledCardAccentColor.current
+            else MaterialTheme.colorScheme.primary
         },
         animationSpec = tween(durationMillis = 140),
         label = "Resize icon color"
@@ -1021,7 +1027,7 @@ private fun InlineCardEditControls(
         Text(
             text = "${card.widthSpan}×${card.heightSpan}",
             modifier = Modifier.weight(1f).testTag("resize-size-${card.id}"),
-            color = if (LocalFilledCard.current) FILLED_CARD_SECONDARY_COLOR
+            color = if (LocalFilledCard.current) LocalFilledCardSecondaryColor.current
             else MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
             maxLines = 1
@@ -1115,13 +1121,13 @@ private fun SummaryCardText(eyebrow: String, title: String, body: String)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = eyebrow,
-            color = if (LocalFilledCard.current) Color.White
+            color = if (LocalFilledCard.current) LocalFilledCardAccentColor.current
             else MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold
         )
         Text(text = title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text(text = body, color = if (LocalFilledCard.current) FILLED_CARD_SECONDARY_COLOR
+        Text(text = body, color = if (LocalFilledCard.current) LocalFilledCardSecondaryColor.current
             else MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -1278,18 +1284,18 @@ private fun RoutineLibraryCard(
 {
     GlassCard(
         modifier = Modifier.testTag("library-routine-${routine.id}"),
-        filledColor = filledCardColor(true, routine.id.hashCode(), LocalColorfulDark.current)
+        filledStyle = filledCardStyle(true, routine.id.hashCode(), LocalColorfulDark.current)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
                 routine.category.uppercase(),
-                color = if (LocalFilledCard.current) Color.White
+                color = if (LocalFilledCard.current) LocalFilledCardAccentColor.current
                 else MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold
             )
             Text(routine.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(routine.goal, color = if (LocalFilledCard.current) FILLED_CARD_SECONDARY_COLOR
+            Text(routine.goal, color = if (LocalFilledCard.current) LocalFilledCardSecondaryColor.current
                 else MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
                 "${routine.estimatedDurationSeconds / 60} min · ${routine.difficulty} · " +
@@ -1301,9 +1307,11 @@ private fun RoutineLibraryCard(
                     onClick = onOpen,
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (LocalFilledCard.current) Color.White else MaterialTheme.colorScheme.primary
+                        contentColor = if (LocalFilledCard.current) LocalFilledCardAccentColor.current
+                        else MaterialTheme.colorScheme.primary
                     ),
-                    border = if (LocalFilledCard.current) BorderStroke(1.dp, Color.White.copy(alpha = 0.88f))
+                    border = if (LocalFilledCard.current)
+                        BorderStroke(1.dp, LocalFilledCardAccentColor.current.copy(alpha = 0.72f))
                     else ButtonDefaults.outlinedButtonBorder(enabled = true)
                 ) {
                     Text("View")
@@ -1311,12 +1319,15 @@ private fun RoutineLibraryCard(
                 Button(
                     onClick = onAdd,
                     enabled = !isOnHome,
-                    border = if (LocalFilledCard.current) BorderStroke(1.dp, Color.White.copy(alpha = 0.88f))
+                    border = if (LocalFilledCard.current)
+                        BorderStroke(1.dp, LocalFilledCardAccentColor.current.copy(alpha = 0.72f))
                     else null,
                     colors = ButtonDefaults.buttonColors(
-                        disabledContainerColor = if (LocalFilledCard.current) Color.White.copy(alpha = 0.18f)
+                        disabledContainerColor = if (LocalFilledCard.current)
+                            LocalFilledCardAccentColor.current.copy(alpha = 0.12f)
                         else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                        disabledContentColor = if (LocalFilledCard.current) Color.White.copy(alpha = 0.72f)
+                        disabledContentColor = if (LocalFilledCard.current)
+                            LocalFilledCardAccentColor.current.copy(alpha = 0.60f)
                         else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                     ),
                     modifier = Modifier
@@ -1412,7 +1423,7 @@ private fun ProgressScreen(
                         selectedRecordId = record.id
                     }
                     .testTag("history-${record.id}"),
-                    filledColor = filledCardColor(false, record.id.hashCode(), LocalColorfulDark.current)) {
+                    filledStyle = filledCardStyle(false, record.id.hashCode(), LocalColorfulDark.current)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
@@ -1423,14 +1434,14 @@ private fun ProgressScreen(
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text("${record.elapsedSeconds / 60} min", color =
-                                if (LocalFilledCard.current) Color.White
+                                if (LocalFilledCard.current) LocalFilledCardAccentColor.current
                                 else MaterialTheme.colorScheme.primary)
                             Text(
                                 Instant.ofEpochMilli(record.completedAtMillis)
                                     .atZone(ZoneId.systemDefault())
                                     .format(DateTimeFormatter.ofPattern("d MMM yyyy")),
                                 style = MaterialTheme.typography.labelMedium,
-                                color = if (LocalFilledCard.current) Color.White
+                                color = if (LocalFilledCard.current) LocalFilledCardSecondaryColor.current
                                 else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -1506,15 +1517,15 @@ private fun ProgressCards(summary: ProgressSummary)
 {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         GlassCard(modifier = Modifier.weight(1f), contentPadding = PaddingValues(14.dp),
-            filledColor = filledCardColor(false, "progress-streak".hashCode(), LocalColorfulDark.current)) {
+            filledStyle = filledCardStyle(false, "progress-streak".hashCode(), LocalColorfulDark.current)) {
             SummaryCardText("STREAK", "${summary.currentStreak}", "days")
         }
         GlassCard(modifier = Modifier.weight(1f), contentPadding = PaddingValues(14.dp),
-            filledColor = filledCardColor(false, "progress-week".hashCode(), LocalColorfulDark.current)) {
+            filledStyle = filledCardStyle(false, "progress-week".hashCode(), LocalColorfulDark.current)) {
             SummaryCardText("THIS WEEK", "${summary.weeklySessions}", "sessions")
         }
         GlassCard(modifier = Modifier.weight(1f), contentPadding = PaddingValues(14.dp),
-            filledColor = filledCardColor(false, "progress-total".hashCode(), LocalColorfulDark.current)) {
+            filledStyle = filledCardStyle(false, "progress-total".hashCode(), LocalColorfulDark.current)) {
             SummaryCardText("TOTAL", "${summary.totalMinutes}", "minutes")
         }
     }
