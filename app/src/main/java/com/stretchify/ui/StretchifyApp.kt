@@ -91,6 +91,7 @@ fun StretchifyApp(
                 )
                 StretchifyScreen.ActiveSession -> ActiveSessionScreen(
                     sessionState = uiState.sessionState,
+                    progressMoments = sessionViewModel.progressMoments,
                     isExitConfirmationVisible = uiState.isExitConfirmationVisible,
                     onPause = { sendEvent(StretchifyEvent.PauseSession) },
                     onResume = { sendEvent(StretchifyEvent.ResumeSession) },

@@ -7,6 +7,8 @@ import com.stretchify.StretchifyApplication
 import com.stretchify.data.DashboardLayout
 import com.stretchify.data.DelightEvaluator
 import com.stretchify.data.DelightPresentation
+import com.stretchify.data.RewardCollection
+import com.stretchify.data.RewardCollectionState
 import com.stretchify.data.GoalCatalog
 import com.stretchify.data.GoalProgressCalculator
 import com.stretchify.data.ProgressCalculator
@@ -78,18 +80,17 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     )
 
     val uiState: StateFlow<StretchifyUiState> = mutableUiState.asStateFlow()
+    val progressMoments = sessionController.progressMoments
 
     init
     {
+        refreshRewards()
         viewModelScope.launch {
             sessionController.savedCompletion.collect { completion ->
-                val delight = completion?.let {
-                    DelightEvaluator.evaluate(it.record, it.beforeRecords, it.afterRecords, it.goals,
-                        it.firstDayOfWeek, it.awardedMilestoneKeys)
-                }
-                if (delight != null) repository.saveDelightMilestones(delight.milestoneKeys)
+                val delight = completion?.delight
                 mutableUiState.update { it.copy(delight = delight,
                     shouldAnimateDelight = delight != null && !repository.hasConsumedDelight(delight.completionId)) }
+                refreshRewards()
             }
         }
         viewModelScope.launch {
@@ -123,6 +124,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             sessionController.completionRecords.collect { completionRecords ->
                 mutableUiState.update { it.copy(completionRecords = completionRecords) }
+                refreshRewards()
             }
         }
     }
@@ -131,6 +133,17 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     {
         when (event)
         {
+            StretchifyEvent.RefreshRewards -> refreshRewards()
+            is StretchifyEvent.PresentHomeRewards ->
+            {
+                repository.consumeHomeRewards(event.keys)
+                refreshRewards()
+            }
+            is StretchifyEvent.ViewBadges ->
+            {
+                repository.markBadgesViewed(event.keys)
+                refreshRewards()
+            }
             is StretchifyEvent.PresentDelight ->
             {
                 if (mutableUiState.value.delight?.completionId == event.completionId)
@@ -216,6 +229,14 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             is StretchifyEvent.SelectLibrarySection -> mutableUiState.update {
                 it.copy(isGoalLibrarySelected = event.isGoals)
             }
+        }
+    }
+
+    private fun refreshRewards()
+    {
+        mutableUiState.update {
+            it.copy(rewards = RewardCollection.calculate(it.completionRecords, repository.loadDelightMilestones(),
+                repository.loadViewedBadgeKeys(), repository.loadPendingHomeRewards()))
         }
     }
 
@@ -828,7 +849,8 @@ data class StretchifyUiState(
     val isGoalLibrarySelected: Boolean = false,
     val delight: DelightPresentation? = null,
     val shouldAnimateDelight: Boolean = false,
-    val welcomeBackRecordId: String? = null
+    val welcomeBackRecordId: String? = null,
+    val rewards: RewardCollectionState = RewardCollectionState()
 )
 {
     val filteredRoutines: List<StretchRoutine>
@@ -873,6 +895,9 @@ enum class StretchifyScreen
 
 sealed interface StretchifyEvent
 {
+    data object RefreshRewards : StretchifyEvent
+    data class PresentHomeRewards(val keys: Set<String>) : StretchifyEvent
+    data class ViewBadges(val keys: Set<String>) : StretchifyEvent
     data class PresentDelight(val completionId: String) : StretchifyEvent
     data object CheckWelcomeBack : StretchifyEvent
     data class PresentWelcomeBack(val recordId: String) : StretchifyEvent

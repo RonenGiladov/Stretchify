@@ -17,6 +17,12 @@ data class GoalWeek(
     val targetsByRoutine: Map<String, Int>,
     val records: List<CompletionRecord>
 )
+{
+    val progressFraction: Float
+        get() = if (target > 0) targetsByRoutine.entries.sumOf { (routineId, routineTarget) ->
+            (countsByRoutine[routineId] ?: 0).coerceIn(0, routineTarget)
+        }.toFloat() / target else 0f
+}
 
 object GoalProgressCalculator
 {

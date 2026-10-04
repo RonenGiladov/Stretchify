@@ -71,6 +71,41 @@ class StretchifyRepositoryTest
     }
 
     @Test
+    fun rewardMigrationIsQuietAndNeverErasesExistingAwards()
+    {
+        val records = (1..5).map { CompletionRecord(it.toString(), "neck", System.currentTimeMillis(), 60, 1) }
+        repository.saveDelightMilestones(setOf("streak:30", "goal:deleted:2026-09-21"))
+        repository.initializeRewardCollection(records)
+        assertTrue(repository.loadDelightMilestones().containsAll(setOf("first", "total:5", "streak:30")))
+        assertEquals(repository.loadDelightMilestones(), repository.loadViewedBadgeKeys())
+        assertTrue(repository.loadPendingHomeRewards().isEmpty())
+        repository.initializeRewardCollection(emptyList())
+        assertTrue("total:5" in repository.loadDelightMilestones())
+    }
+
+    @Test
+    fun earnedRewardsRemainNewUntilViewedAndAnimateOnlyOnce()
+    {
+        repository.initializeRewardCollection(emptyList())
+        val now = System.currentTimeMillis()
+        repository.awardSessionRewards(setOf("first"), now)
+        assertTrue("first" in repository.loadDelightMilestones())
+        assertFalse("first" in repository.loadViewedBadgeKeys())
+        val pending = repository.loadPendingHomeRewards()
+        assertEquals(2, pending.size)
+        repository.consumeHomeRewards(pending)
+        assertTrue(repository.loadPendingHomeRewards().isEmpty())
+        assertFalse("first" in repository.loadViewedBadgeKeys())
+        repository.markBadgesViewed(setOf("first"))
+        val restored = StretchifyRepository(context)
+        assertTrue("first" in restored.loadViewedBadgeKeys())
+        restored.awardSessionRewards(setOf("first"), now)
+        assertTrue(restored.loadPendingHomeRewards().isEmpty())
+        restored.saveCompletionRecords(emptyList())
+        assertTrue("first" in restored.loadDelightMilestones())
+    }
+
+    @Test
     fun emptyStorageReturnsDefaults()
     {
         assertEquals(DashboardLayout.defaultCards(), repository.loadDashboardCards())

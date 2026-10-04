@@ -111,6 +111,12 @@ import androidx.compose.ui.unit.sp
 import com.stretchify.data.ProgressSummary
 import com.stretchify.data.DelightPresentation
 import com.stretchify.ui.components.DelightCard
+import com.stretchify.ui.components.HomeRewards
+import com.stretchify.ui.components.SessionProgressCard
+import com.stretchify.session.SessionProgressMoment
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.isActive
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -534,6 +540,14 @@ fun HomeScreen(
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED)
         {
             onEvent(StretchifyEvent.CheckWelcomeBack)
+            while (isActive)
+            {
+                onEvent(StretchifyEvent.RefreshRewards)
+                val now = Instant.now()
+                val midnight = now.atZone(ZoneId.systemDefault()).toLocalDate().plusDays(1)
+                    .atStartOfDay(ZoneId.systemDefault()).toInstant()
+                delay((midnight.toEpochMilli() - now.toEpochMilli()).coerceAtLeast(1000L))
+            }
         }
     }
     LazyColumn(
@@ -575,6 +589,12 @@ fun HomeScreen(
                     }
                 )
             }
+        }
+        item(key = "home-rewards") {
+            HomeRewards(uiState.rewards, uiState.screen == com.stretchify.ui.StretchifyScreen.TopLevel &&
+                uiState.selectedDestination == TopLevelDestination.Home,
+                onPresented = { onEvent(StretchifyEvent.PresentHomeRewards(it)) },
+                onViewed = { onEvent(StretchifyEvent.ViewBadges(it)) })
         }
         item {
             if (lastCompletedRoutine != null)
@@ -874,21 +894,34 @@ private fun DashboardCardContent(
             {
                 DashboardCardType.Today -> SummaryCardText(
                     eyebrow = "TODAY",
-                    title = "Your next reset",
-                    body = "Start with ${uiState.catalog.first().title}"
+                    title = if (uiState.rewards.hasCompletedToday) "You showed up today." else "Your next reset",
+                    body = if (uiState.rewards.hasCompletedToday) "A moment for yourself, made."
+                        else "Start with ${uiState.catalog.first().title}"
                 )
                 DashboardCardType.Routine -> SummaryCardText(
                     eyebrow = routine?.category?.uppercase() ?: "ROUTINE",
                     title = routine?.title ?: "Routine unavailable",
                     body = routine?.let { "${it.estimatedDurationSeconds / 60} min · ${it.difficulty}" } ?: ""
                 )
-                DashboardCardType.Goal -> SummaryCardText(
-                    eyebrow = "GOAL",
-                    title = goal?.title ?: "Goal unavailable",
-                    body = goalWeek?.let {
-                        "${it.completed}/${it.target} this week · ${if (it.isMet) "Met" else "In progress"}"
-                    } ?: ""
-                )
+                DashboardCardType.Goal ->
+                {
+                    val progress by animateFloatAsState(goalWeek?.progressFraction ?: 0f,
+                        label = "Goal progress")
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SummaryCardText(
+                            eyebrow = "GOAL",
+                            title = goal?.title ?: "Goal unavailable",
+                            body = goalWeek?.let {
+                                if (it.isMet) "✓ Met this week" else "${it.completed}/${it.target} this week"
+                            } ?: ""
+                        )
+                        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth()
+                            .testTag("goal-progress-${goal?.id}"),
+                            color = if (LocalFilledCard.current) Color.White else MaterialTheme.colorScheme.primary,
+                            trackColor = if (LocalFilledCard.current) Color.White.copy(alpha = 0.25f)
+                                else MaterialTheme.colorScheme.surfaceVariant)
+                    }
+                }
                 DashboardCardType.WeeklyProgress -> {
                     val weeklySessions = uiState.progressSummary.weeklySessions
                     val progress by animateFloatAsState(
@@ -1605,7 +1638,8 @@ fun ActiveSessionScreen(
     onSkip: () -> Unit,
     onExit: () -> Unit,
     onKeepStretching: () -> Unit,
-    onConfirmExit: () -> Unit
+    onConfirmExit: () -> Unit,
+    progressMoments: Flow<SessionProgressMoment> = emptyFlow()
 )
 {
     val currentStep = sessionState.currentStep
@@ -1631,15 +1665,7 @@ fun ActiveSessionScreen(
                     contentDescription = "$phaseLabel timer ${sessionState.remainingSeconds} seconds remaining"
                 }
         )
-        val remainingMinutes = sessionState.remainingRoutineSeconds / 60
-        val remainingSeconds = sessionState.remainingRoutineSeconds % 60
-        GlassCard(modifier = Modifier.testTag("session-progress")) {
-            Text(
-                "Stretch ${sessionState.currentStepIndex + 1} of ${sessionState.routine.steps.size}",
-                fontWeight = FontWeight.SemiBold
-            )
-            Text("About %d:%02d remaining".format(remainingMinutes, remainingSeconds))
-        }
+        SessionProgressCard(sessionState, progressMoments)
         GlassCard(modifier = Modifier.testTag("current-stretch-card")) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(currentStep.stretch.name, style = MaterialTheme.typography.headlineMedium,

@@ -15,6 +15,8 @@ import com.stretchify.model.GoalRevision
 import com.stretchify.model.GoalRoutine
 import com.stretchify.model.ThemePreference
 import java.time.DayOfWeek
+import java.time.Instant
+import java.time.ZoneId
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -33,6 +35,52 @@ class StretchifyRepository(context: Context)
 
     fun loadDelightMilestones(): Set<String> =
         preferences.getStringSet(DELIGHT_MILESTONES_KEY, emptySet()).orEmpty().toSet()
+
+    fun initializeRewardCollection(records: List<CompletionRecord>)
+    {
+        if (preferences.getBoolean(REWARDS_INITIALIZED_KEY, false)) return
+        val now = System.currentTimeMillis()
+        val zoneId = ZoneId.systemDefault()
+        val goals = GoalCatalog.build(loadCustomGoals(), loadGoalOverrides())
+        val keys = loadDelightMilestones() +
+            DelightEvaluator.collectHistoricalMilestones(records, goals, loadFirstDayOfWeek(), now, zoneId)
+        val days = records.filter { it.completedAtMillis <= now }.map {
+            "day:${Instant.ofEpochMilli(it.completedAtMillis).atZone(zoneId).toLocalDate()}"
+        }
+        preferences.edit().putStringSet(DELIGHT_MILESTONES_KEY, keys)
+            .putStringSet(VIEWED_BADGES_KEY, keys)
+            .putStringSet(HOME_REWARDS_CONSUMED_KEY, keys + days)
+            .putStringSet(HOME_REWARDS_PENDING_KEY, emptySet())
+            .putBoolean(REWARDS_INITIALIZED_KEY, true).apply()
+    }
+
+    fun awardSessionRewards(keys: Set<String>, completedAtMillis: Long)
+    {
+        val existingKeys = loadDelightMilestones()
+        val day = Instant.ofEpochMilli(completedAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+        val consumedKeys = preferences.getStringSet(HOME_REWARDS_CONSUMED_KEY, emptySet()).orEmpty()
+        val pendingKeys = loadPendingHomeRewards() + ((keys - existingKeys + "day:$day") - consumedKeys)
+        preferences.edit().putStringSet(DELIGHT_MILESTONES_KEY, existingKeys + keys)
+            .putStringSet(HOME_REWARDS_PENDING_KEY, pendingKeys).apply()
+    }
+
+    fun loadViewedBadgeKeys(): Set<String> =
+        preferences.getStringSet(VIEWED_BADGES_KEY, emptySet()).orEmpty().toSet()
+
+    fun loadPendingHomeRewards(): Set<String> =
+        preferences.getStringSet(HOME_REWARDS_PENDING_KEY, emptySet()).orEmpty().toSet()
+
+    fun markBadgesViewed(keys: Set<String>)
+    {
+        preferences.edit().putStringSet(VIEWED_BADGES_KEY, loadViewedBadgeKeys() + keys).apply()
+    }
+
+    fun consumeHomeRewards(keys: Set<String>)
+    {
+        val consumedKeys = preferences.getStringSet(HOME_REWARDS_CONSUMED_KEY, emptySet()).orEmpty()
+        preferences.edit().putStringSet(HOME_REWARDS_CONSUMED_KEY, consumedKeys + keys)
+            .putStringSet(HOME_REWARDS_PENDING_KEY, loadPendingHomeRewards() - keys).apply()
+    }
 
     fun saveDelightMilestones(keys: Set<String>)
     {
@@ -476,6 +524,10 @@ class StretchifyRepository(context: Context)
         private const val DELIGHT_MILESTONES_KEY = "delight_milestones"
         private const val DELIGHT_CONSUMED_KEY = "delight_consumed"
         private const val WELCOME_BACK_KEY = "welcome_back_record"
+        private const val REWARDS_INITIALIZED_KEY = "rewards_initialized"
+        private const val VIEWED_BADGES_KEY = "viewed_badges"
+        private const val HOME_REWARDS_CONSUMED_KEY = "home_rewards_consumed"
+        private const val HOME_REWARDS_PENDING_KEY = "home_rewards_pending"
         const val DASHBOARD_KEY = "dashboard_cards"
         const val LIQUID_PRESET_KEY = "liquid_preset"
         const val GLASS_FINISH_KEY = "glass_finish"
