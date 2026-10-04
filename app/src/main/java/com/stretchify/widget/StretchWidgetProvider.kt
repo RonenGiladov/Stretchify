@@ -34,7 +34,7 @@ class StretchWidgetProvider : AppWidgetProvider()
             }
             else
             {
-                views.setTextViewText(R.id.widget_routine_title, "Ready for a stretch?")
+                views.setTextViewText(R.id.widget_routine_title, "Ready to move?")
                 views.setTextViewText(R.id.widget_action, "Open Stretchify")
             }
             val pendingIntent = PendingIntent.getActivity(

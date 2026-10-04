@@ -213,7 +213,8 @@ class SessionController(
             completedAtMillis = System.currentTimeMillis(),
             elapsedSeconds = sessionState.elapsedSeconds,
             completedStepCount = sessionState.routine.steps.size,
-            routineTitle = sessionState.routine.title
+            routineTitle = sessionState.routine.title,
+            routineType = sessionState.routine.routineType
         )
         val beforeRecords = mutableCompletionRecords.value
         val records = beforeRecords + record

@@ -15,6 +15,7 @@ import androidx.core.app.ServiceCompat
 import com.stretchify.MainActivity
 import com.stretchify.R
 import com.stretchify.StretchifyApplication
+import com.stretchify.model.RoutineType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -127,7 +128,14 @@ class SessionService : Service()
         }
         val phaseText = when (sessionState.phase)
         {
-            SessionPhase.Stretching -> getString(R.string.notification_stretching)
+            SessionPhase.Stretching -> if (sessionState.routine.routineType == RoutineType.Workout)
+            {
+                getString(R.string.notification_exercising)
+            }
+            else
+            {
+                getString(R.string.notification_stretching)
+            }
             SessionPhase.Resting -> getString(R.string.notification_resting)
             SessionPhase.Paused -> getString(R.string.notification_paused)
             SessionPhase.Completed -> getString(R.string.notification_completed)

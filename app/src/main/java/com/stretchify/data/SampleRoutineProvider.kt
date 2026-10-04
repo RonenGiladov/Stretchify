@@ -3,6 +3,7 @@ package com.stretchify.data
 import com.stretchify.model.RoutineStep
 import com.stretchify.model.Stretch
 import com.stretchify.model.StretchRoutine
+import com.stretchify.model.RoutineType
 
 object SampleRoutineProvider
 {
@@ -207,6 +208,69 @@ object SampleRoutineProvider
         durationSeconds = 60
     )
 
+    private val starterWorkout: StretchRoutine = StretchRoutine(
+        id = "full-body-starter",
+        title = "5-Minute Full Body Starter",
+        goal = "Build full-body strength and energy with accessible bodyweight exercises.",
+        category = "Full Body",
+        difficulty = "Beginner",
+        targetAreas = listOf("Full body", "Strength"),
+        isFeatured = true,
+        routineType = RoutineType.Workout,
+        steps = listOf(
+            workoutStep(
+                "march-in-place",
+                "March in Place",
+                "March with control while swinging your arms naturally.",
+                "Stay tall and land softly with each step.",
+                "March more slowly and keep your feet close to the floor."
+            ),
+            workoutStep(
+                "chair-squats",
+                "Chair Squats",
+                "Sit back toward a sturdy chair, lightly touch it, then stand tall.",
+                "Press through your whole foot and keep your knees tracking forward.",
+                "Use a higher chair and your hands for light support."
+            ),
+            workoutStep(
+                "wall-push-ups",
+                "Wall Push-Ups",
+                "Place your hands on a wall, lower your chest toward it, then press away.",
+                "Keep your body in one long line and move with control.",
+                "Stand closer to the wall to reduce the effort."
+            ),
+            workoutStep(
+                "standing-knee-raises",
+                "Standing Knee Raises",
+                "Alternate lifting each knee toward your waist while staying upright.",
+                "Brace gently through your middle and avoid leaning back.",
+                "Hold a sturdy support and lift each knee a little lower."
+            ),
+            workoutStep(
+                "glute-bridges",
+                "Glute Bridges",
+                "Lie on your back with bent knees, lift your hips, then lower with control.",
+                "Press through your heels and stop before your lower back arches.",
+                "Lift through a smaller comfortable range."
+            )
+        )
+    )
+
+    private fun workoutStep(
+        id: String,
+        name: String,
+        description: String,
+        trainerCue: String,
+        easierDescription: String
+    ): RoutineStep
+    {
+        return RoutineStep(
+            stretch = Stretch(id, name, description, trainerCue, easierDescription),
+            durationSeconds = if (id == "march-in-place") 60 else 45,
+            restSeconds = if (id == "glute-bridges") 0 else 15
+        )
+    }
+
     val routines = listOf(
         roundedShouldersRoutine,
         lowerBackReset,
@@ -216,6 +280,7 @@ object SampleRoutineProvider
         quickReset,
         morningPosture,
         hipFlexorStretch,
-        neckPostureReset
+        neckPostureReset,
+        starterWorkout
     )
 }

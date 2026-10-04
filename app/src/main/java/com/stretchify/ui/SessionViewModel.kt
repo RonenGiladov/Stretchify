@@ -24,6 +24,7 @@ import com.stretchify.model.AlertTiming
 import com.stretchify.model.DashboardCard
 import com.stretchify.model.DashboardCardType
 import com.stretchify.model.RoutineStep
+import com.stretchify.model.RoutineType
 import com.stretchify.model.Stretch
 import com.stretchify.model.StretchRoutine
 import com.stretchify.model.LiquidPreset
@@ -199,6 +200,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             StretchifyEvent.ResetDashboard -> updateCards(DashboardLayout.defaultCards())
             is StretchifyEvent.RemoveCard -> removeCard(event.cardId)
             StretchifyEvent.UndoRemoveCard -> undoRemoveCard()
+            StretchifyEvent.DismissRemoveCard -> mutableUiState.update { it.copy(removedCard = null) }
             is StretchifyEvent.MoveCard -> moveCard(event.cardId, event.offset)
             is StretchifyEvent.ResizeCard -> resizeCard(event.cardId, event.widthDelta, event.heightDelta)
             is StretchifyEvent.AddRoutineCard -> addRoutineCard(event.routineId)
@@ -206,6 +208,9 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             is StretchifyEvent.AddSummaryCard -> addSummaryCard(event.type)
             is StretchifyEvent.UpdateSearch -> mutableUiState.update { it.copy(searchQuery = event.query) }
             is StretchifyEvent.SelectCategory -> mutableUiState.update { it.copy(selectedCategory = event.category) }
+            is StretchifyEvent.SelectRoutineType -> mutableUiState.update {
+                it.copy(selectedRoutineType = event.routineType)
+            }
             is StretchifyEvent.SelectTheme -> selectTheme(event.themePreference)
             is StretchifyEvent.SelectLiquidPreset ->
             {
@@ -629,6 +634,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             difficulty = existingRoutine?.difficulty ?: "Beginner",
             targetAreas = existingRoutine?.targetAreas ?: listOf("Custom"),
             isFeatured = existingRoutine?.isFeatured ?: false,
+            routineType = event.routineType,
             steps = event.steps.mapIndexed { index, step ->
                 val existingStep = existingRoutine?.steps?.firstOrNull { it.stretch.name == step.name } ?:
                     existingRoutine?.steps?.getOrNull(index)
@@ -638,7 +644,14 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                         name = step.name.trim(),
                         description = existingStep?.stretch?.description ?: event.goal.trim(),
                         trainerCue = existingStep?.stretch?.trainerCue ?:
-                            "Move gently and stay within a comfortable range.",
+                            if (event.routineType == RoutineType.Workout)
+                            {
+                                "Keep a steady, controlled pace and stop if the movement feels uncomfortable."
+                            }
+                            else
+                            {
+                                "Move gently and stay within a comfortable range."
+                            },
                         easierDescription = existingStep?.stretch?.easierDescription
                     ),
                     durationSeconds = step.durationSeconds,
@@ -742,7 +755,9 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                 completedAtMillis = event.completedAtMillis,
                 elapsedSeconds = event.elapsedSeconds,
                 completedStepCount = event.completedStepCount,
-                routineTitle = routine?.title ?: event.routineTitle
+                routineTitle = routine?.title ?: event.routineTitle,
+                routineType = routine?.routineType ?: mutableUiState.value.editingHistoryRecord?.routineType
+                    ?: RoutineType.Stretch
             )
         )
         mutableUiState.update {
@@ -839,6 +854,7 @@ data class StretchifyUiState(
     val glassFinish: GlassFinish = GlassFinish.Clear,
     val searchQuery: String = "",
     val selectedCategory: String = "All",
+    val selectedRoutineType: RoutineType? = null,
     val removedCard: DashboardCard? = null,
     val isDashboardEditing: Boolean = false,
     val isExitConfirmationVisible: Boolean = false,
@@ -854,7 +870,7 @@ data class StretchifyUiState(
 )
 {
     val filteredRoutines: List<StretchRoutine>
-        get() = RoutineCatalog.filter(catalog, searchQuery, selectedCategory)
+        get() = RoutineCatalog.filter(catalog, searchQuery, selectedCategory, selectedRoutineType)
 
     val progressSummary: ProgressSummary
         get() = ProgressCalculator.calculate(completionRecords, firstDayOfWeek = firstDayOfWeek)
@@ -929,6 +945,7 @@ sealed interface StretchifyEvent
         val title: String,
         val goal: String,
         val steps: List<CustomRoutineStep>,
+        val routineType: RoutineType,
         val goalIds: Set<String> = emptySet()
     ) : StretchifyEvent
     data object RestoreRoutine : StretchifyEvent
@@ -955,6 +972,7 @@ sealed interface StretchifyEvent
     data object ResetDashboard : StretchifyEvent
     data class RemoveCard(val cardId: String) : StretchifyEvent
     data object UndoRemoveCard : StretchifyEvent
+    data object DismissRemoveCard : StretchifyEvent
     data class MoveCard(val cardId: String, val offset: Int) : StretchifyEvent
     data class ResizeCard(val cardId: String, val widthDelta: Int, val heightDelta: Int) : StretchifyEvent
     data class AddRoutineCard(val routineId: String) : StretchifyEvent
@@ -962,6 +980,7 @@ sealed interface StretchifyEvent
     data class AddSummaryCard(val type: DashboardCardType) : StretchifyEvent
     data class UpdateSearch(val query: String) : StretchifyEvent
     data class SelectCategory(val category: String) : StretchifyEvent
+    data class SelectRoutineType(val routineType: RoutineType?) : StretchifyEvent
     data class SelectTheme(val themePreference: ThemePreference) : StretchifyEvent
     data class SelectLiquidPreset(val preset: LiquidPreset) : StretchifyEvent
     data class SelectGlassFinish(val finish: GlassFinish) : StretchifyEvent

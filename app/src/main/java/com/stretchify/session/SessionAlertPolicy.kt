@@ -4,6 +4,7 @@ import com.stretchify.model.AlertTiming
 
 enum class SessionAlert
 {
+    CountdownComplete,
     StretchComplete,
     RestComplete,
     RoutineComplete
@@ -20,6 +21,11 @@ object SessionAlertPolicy
         if (nextState.phase == SessionPhase.Completed && previousState.phase.isActive)
         {
             return SessionAlert.RoutineComplete
+        }
+
+        if (previousState.phase == SessionPhase.Countdown && nextState.phase == SessionPhase.Stretching)
+        {
+            return SessionAlert.CountdownComplete
         }
 
         if (previousState.phase == SessionPhase.Stretching &&

@@ -9,8 +9,10 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.stretchify.ui.components.LiquidBackgroundHost
@@ -51,6 +53,14 @@ fun StretchifyApp(
     val homeListState = rememberLazyListState()
     val libraryListState = rememberLazyListState()
     val progressListState = rememberLazyListState()
+    val view = LocalView.current
+    val shouldKeepScreenOn = uiState.sessionState.phase.isActive
+
+    DisposableEffect(view, shouldKeepScreenOn)
+    {
+        view.keepScreenOn = shouldKeepScreenOn
+        onDispose { view.keepScreenOn = false }
+    }
 
     if (uiState.screen != StretchifyScreen.TopLevel || uiState.isDashboardEditing)
     {

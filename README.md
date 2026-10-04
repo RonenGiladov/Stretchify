@@ -2,9 +2,10 @@
 
 ![Stretchify wordmark](assets/branding/stretchify-wordmark.png)
 
-Stretchify is a native Android stretching app built with Kotlin and Jetpack
-Compose. It provides guided routines, timed stretch and rest phases, progress
-tracking, reminders, a home-screen widget, and a selection of visual themes.
+Stretchify is a native Android movement app built with Kotlin and Jetpack
+Compose. It provides guided stretch and workout routines, timed activity and
+rest phases, progress tracking, reminders, a home-screen widget, and a selection
+of visual themes.
 
 ## Requirements
 

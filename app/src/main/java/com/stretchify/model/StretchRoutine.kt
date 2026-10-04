@@ -22,11 +22,18 @@ data class StretchRoutine(
     val category: String = "Posture",
     val difficulty: String = "Beginner",
     val targetAreas: List<String> = emptyList(),
-    val isFeatured: Boolean = false
+    val isFeatured: Boolean = false,
+    val routineType: RoutineType = RoutineType.Stretch
 )
 {
     val estimatedDurationSeconds: Int
         get() = steps.sumOf { step -> step.durationSeconds + step.restSeconds }
+}
+
+enum class RoutineType
+{
+    Stretch,
+    Workout
 }
 
 enum class DashboardCardType
@@ -79,7 +86,8 @@ data class CompletionRecord(
     val completedAtMillis: Long,
     val elapsedSeconds: Int,
     val completedStepCount: Int,
-    val routineTitle: String? = null
+    val routineTitle: String? = null,
+    val routineType: RoutineType = RoutineType.Stretch
 )
 
 data class GoalRevision(

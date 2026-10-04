@@ -37,7 +37,7 @@ class ReminderReceiver : BroadcastReceiver()
 
         val notificationManager = context.getSystemService(NotificationManager::class.java)
         notificationManager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Stretch reminders", NotificationManager.IMPORTANCE_DEFAULT)
+            NotificationChannel(CHANNEL_ID, "Movement reminders", NotificationManager.IMPORTANCE_DEFAULT)
         )
         val openAppIntent = PendingIntent.getActivity(
             context,
@@ -47,7 +47,7 @@ class ReminderReceiver : BroadcastReceiver()
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Time for a stretch")
+            .setContentTitle("Time to move")
             .setContentText("A short routine can help you reset.")
             .setContentIntent(openAppIntent)
             .setAutoCancel(true)

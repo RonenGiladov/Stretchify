@@ -13,6 +13,29 @@ class SessionAlertPolicyTest
     private val sessionEngine = SessionEngine(routine)
 
     @Test
+    fun countdownEndProducesAlertForEveryTimingPreference()
+    {
+        val previousState = sessionEngine.startSession(sessionEngine.initialState(), 1)
+        val nextState = sessionEngine.tick(previousState)
+
+        AlertTiming.entries.forEach { alertTiming ->
+            assertEquals(
+                SessionAlert.CountdownComplete,
+                SessionAlertPolicy.alertForTransition(previousState, nextState, alertTiming)
+            )
+        }
+    }
+
+    @Test
+    fun ordinaryCountdownTickProducesNoAlert()
+    {
+        val previousState = sessionEngine.startSession(sessionEngine.initialState(), 2)
+        val nextState = sessionEngine.tick(previousState)
+
+        assertNull(SessionAlertPolicy.alertForTransition(previousState, nextState, AlertTiming.EveryTransition))
+    }
+
+    @Test
     fun stretchEndProducesStretchAlert()
     {
         val previousState = sessionEngine.startSession(sessionEngine.initialState()).copy(remainingSeconds = 1)

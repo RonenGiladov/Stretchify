@@ -128,6 +128,7 @@ import com.stretchify.model.AlertMode
 import com.stretchify.model.AlertTiming
 import com.stretchify.model.DashboardCardType
 import com.stretchify.model.StretchRoutine
+import com.stretchify.model.RoutineType
 import com.stretchify.model.GoalRoutine
 import com.stretchify.model.LiquidPreset
 import com.stretchify.model.GlassFinish
@@ -201,6 +202,10 @@ fun TopLevelScreen(
             if (result == SnackbarResult.ActionPerformed)
             {
                 onEvent(StretchifyEvent.UndoRemoveCard)
+            }
+            else
+            {
+                onEvent(StretchifyEvent.DismissRemoveCard)
             }
         }
     }
@@ -900,7 +905,10 @@ private fun DashboardCardContent(
                         else "Start with ${uiState.catalog.first().title}"
                 )
                 DashboardCardType.Routine -> SummaryCardText(
-                    eyebrow = routine?.category?.uppercase() ?: "ROUTINE",
+                    eyebrow = routine?.let {
+                        "${if (it.routineType == RoutineType.Workout) "WORKOUT" else "STRETCH"} · " +
+                            it.category.uppercase()
+                    } ?: "ROUTINE",
                     title = routine?.title ?: "Routine unavailable",
                     body = routine?.let { "${it.estimatedDurationSeconds / 60} min · ${it.difficulty}" } ?: ""
                 )
@@ -1252,7 +1260,25 @@ private fun LibraryScreen(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                listOf("All", "Posture", "Back", "Hips", "Neck", "Recovery", "Quick", "Custom").forEach { category ->
+                listOf<Pair<String, RoutineType?>>("All" to null, "Stretches" to RoutineType.Stretch,
+                    "Workouts" to RoutineType.Workout).forEach { (label, routineType) ->
+                    FilterChip(
+                        selected = uiState.selectedRoutineType == routineType,
+                        onClick = { onEvent(StretchifyEvent.SelectRoutineType(routineType)) },
+                        label = { Text(label) }
+                    )
+                }
+            }
+        }
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("All", "Posture", "Back", "Hips", "Neck", "Recovery", "Quick", "Full Body", "Custom")
+                    .forEach { category ->
                     FilterChip(
                         selected = uiState.selectedCategory == category,
                         onClick = { onEvent(StretchifyEvent.SelectCategory(category)) },
@@ -1264,7 +1290,7 @@ private fun LibraryScreen(
         if (uiState.searchQuery.isBlank() && uiState.selectedCategory == "All")
         {
             item { SectionTitle("Featured") }
-            itemsWithCards("featured", uiState.catalog.filter { it.isFeatured }, uiState, onEvent)
+            itemsWithCards("featured", uiState.filteredRoutines.filter { it.isFeatured }, uiState, onEvent)
             item { SectionTitle("All routines") }
         }
         if (uiState.filteredRoutines.isEmpty())
@@ -1321,7 +1347,8 @@ private fun RoutineLibraryCard(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
-                routine.category.uppercase(),
+                "${if (routine.routineType == RoutineType.Workout) "WORKOUT" else "STRETCH"} · " +
+                    routine.category.uppercase(),
                 color = if (LocalFilledCard.current) LocalFilledCardAccentColor.current
                 else MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.labelLarge,
@@ -1450,6 +1477,7 @@ private fun ProgressScreen(
             items(summary.recentRecords.size) { index ->
                 val record = summary.recentRecords[index]
                 val routine = uiState.catalog.firstOrNull { it.id == record.routineId }
+                val isWorkout = record.routineType == RoutineType.Workout
                 GlassCard(modifier = Modifier
                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
                     .clickable {
@@ -1460,10 +1488,11 @@ private fun ProgressScreen(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                record.routineTitle ?: routine?.title ?: "Stretch session",
+                                record.routineTitle ?: routine?.title ?:
+                                    if (isWorkout) "Workout session" else "Stretch session",
                                 fontWeight = FontWeight.Bold
                             )
-                            Text("${record.completedStepCount} stretches")
+                            Text("${record.completedStepCount} ${if (isWorkout) "exercises" else "stretches"}")
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text("${record.elapsedSeconds / 60} min", color =
@@ -1486,6 +1515,7 @@ private fun ProgressScreen(
     if (selectedRecord != null)
     {
         val routine = uiState.catalog.firstOrNull { it.id == selectedRecord.routineId }
+        val isWorkout = selectedRecord.routineType == RoutineType.Workout
         ModalBottomSheet(
             onDismissRequest = { selectedRecordId = null },
             modifier = Modifier.testTag("session-actions-sheet"),
@@ -1500,7 +1530,8 @@ private fun ProgressScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    selectedRecord.routineTitle ?: routine?.title ?: "Stretch session",
+                    selectedRecord.routineTitle ?: routine?.title ?:
+                        if (isWorkout) "Workout session" else "Stretch session",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -1510,7 +1541,10 @@ private fun ProgressScreen(
                         .format(DateTimeFormatter.ofPattern("d MMM yyyy · HH:mm")),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Text("${selectedRecord.elapsedSeconds / 60} min · ${selectedRecord.completedStepCount} stretches")
+                Text(
+                    "${selectedRecord.elapsedSeconds / 60} min · ${selectedRecord.completedStepCount} " +
+                        if (isWorkout) "exercises" else "stretches"
+                )
                 Button(
                     onClick = {
                         selectedRecordId = null
@@ -1572,35 +1606,50 @@ fun RoutinePreviewScreen(
     onEdit: () -> Unit
 )
 {
+    val isWorkout = routine.routineType == RoutineType.Workout
+    val stepLabel = if (isWorkout) "exercise" else "stretch"
     FocusedScreen {
         BackHeader("Routine details", onBack)
         Text(routine.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text(routine.goal, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.76f))
         GlassCard {
             Text(
-                "${routine.estimatedDurationSeconds / 60} min · ${routine.difficulty} · ${routine.targetAreas.joinToString()}",
+                "${routine.estimatedDurationSeconds / 60} min · ${routine.difficulty} · " +
+                    routine.targetAreas.joinToString(),
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold
             )
         }
-        Button(
-            onClick = onStartSession,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 52.dp)
-                .pulseOnFirstVisible()
-                .testTag("start-session-top-button")
-        ) {
-            FilledButtonText("Start routine")
+        if (routine.steps.size > 1)
+        {
+            Button(
+                onClick = onStartSession,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 52.dp)
+                    .pulseOnFirstVisible()
+                    .testTag("start-session-top-button")
+            ) {
+                FilledButtonText("Start routine")
+            }
         }
-        TrainerMessageBubble("I'll guide the timing and transitions. Move only through a comfortable range.")
+        TrainerMessageBubble(
+            if (isWorkout)
+            {
+                "I'll guide each exercise and rest. Keep a controlled pace and use the easier option when needed."
+            }
+            else
+            {
+                "I'll guide the timing and transitions. Move only through a comfortable range."
+            }
+        )
         routine.steps.forEachIndexed { index, step ->
             GlassCard {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("${index + 1}. ${step.stretch.name}", style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold)
                     Text(step.stretch.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("${step.durationSeconds}s stretch · ${step.restSeconds}s rest",
+                    Text("${step.durationSeconds}s $stepLabel · ${step.restSeconds}s rest",
                         color = MaterialTheme.colorScheme.primary)
                 }
             }
@@ -1654,13 +1703,15 @@ fun ActiveSessionScreen(
 )
 {
     val currentStep = sessionState.currentStep
+    val isWorkout = sessionState.routine.routineType == RoutineType.Workout
+    val stepLabel = if (isWorkout) "Exercise" else "Stretch"
     var isUsingEasierVersion by rememberSaveable(sessionState.routine.id, sessionState.currentStepIndex) {
         mutableStateOf(false)
     }
     val isPaused = sessionState.phase == SessionPhase.Paused
     val phaseLabel = when (sessionState.phase)
     {
-        SessionPhase.Stretching -> "Stretch"
+        SessionPhase.Stretching -> stepLabel
         SessionPhase.Resting -> "Rest"
         SessionPhase.Paused -> "Paused"
         else -> "Session"
@@ -1676,7 +1727,7 @@ fun ActiveSessionScreen(
                     contentDescription = "$phaseLabel timer ${sessionState.remainingSeconds} seconds remaining"
                 }
         )
-        SessionProgressCard(sessionState, progressMoments)
+        SessionProgressCard(sessionState, progressMoments, stepLabel)
         GlassCard(modifier = Modifier.testTag("current-stretch-card")) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(currentStep.stretch.name, style = MaterialTheme.typography.headlineMedium,
@@ -1701,7 +1752,14 @@ fun ActiveSessionScreen(
         TrainerMessageBubble(
             message = if (sessionState.phase == SessionPhase.Resting)
             {
-                "Nice. Shake it out and get ready for ${sessionState.nextStep?.stretch?.name ?: "the finish"}."
+                if (isWorkout)
+                {
+                    "Recover, breathe, and get ready for ${sessionState.nextStep?.stretch?.name ?: "the finish"}."
+                }
+                else
+                {
+                    "Nice. Shake it out and get ready for ${sessionState.nextStep?.stretch?.name ?: "the finish"}."
+                }
             }
             else
             {
@@ -1742,7 +1800,7 @@ fun ActiveSessionScreen(
             },
             dismissButton = {
                 OutlinedButton(onClick = onKeepStretching, modifier = Modifier.testTag("keep-stretching")) {
-                    Text("Keep stretching")
+                    Text(if (isWorkout) "Keep working out" else "Keep stretching")
                 }
             },
             modifier = Modifier.testTag("session-exit-dialog")
@@ -1928,7 +1986,7 @@ fun SettingsScreen(
             val label = when (alertTiming)
             {
                 AlertTiming.EveryTransition -> "Every transition"
-                AlertTiming.StretchAndFinish -> "Stretch and finish"
+                AlertTiming.StretchAndFinish -> "Each step and finish"
             }
             SettingsOptionButton(
                 label = label,
@@ -2074,6 +2132,9 @@ fun HistoryEditorScreen(uiState: StretchifyUiState, onEvent: (StretchifyEvent) -
     val parsedDateTime = runCatching { LocalDateTime.parse(dateTimeText, formatter) }.getOrNull()
     val durationSeconds = durationText.toIntOrNull()
     val stretchCount = stretchCountText.toIntOrNull()
+    val selectedRoutine = uiState.catalog.firstOrNull { it.id == routineId }
+    val isWorkout = selectedRoutine?.routineType == RoutineType.Workout ||
+        (selectedRoutine == null && record?.routineType == RoutineType.Workout)
     val canSave = routineId.isNotBlank() && parsedDateTime != null && durationSeconds != null &&
         durationSeconds > 0 && stretchCount != null && stretchCount >= 0
 
@@ -2112,13 +2173,12 @@ fun HistoryEditorScreen(uiState: StretchifyUiState, onEvent: (StretchifyEvent) -
         OutlinedTextField(
             value = stretchCountText,
             onValueChange = { stretchCountText = it.filter(Char::isDigit).take(4) },
-            label = { Text("Completed stretches") },
+            label = { Text(if (isWorkout) "Completed exercises" else "Completed stretches") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag("history-stretch-count")
         )
         Button(
             onClick = {
-                val selectedRoutine = uiState.catalog.firstOrNull { it.id == routineId }
                 onEvent(
                     StretchifyEvent.SaveHistoryRecord(
                         recordId = record?.id,
@@ -2168,6 +2228,9 @@ fun CustomRoutineCreatorScreen(
 {
     var title by rememberSaveable(routine?.id) { mutableStateOf(routine?.title ?: "") }
     var goal by rememberSaveable(routine?.id) { mutableStateOf(routine?.goal ?: "") }
+    var routineType by rememberSaveable(routine?.id) {
+        mutableStateOf(routine?.routineType ?: RoutineType.Stretch)
+    }
     var linkedGoalIds by remember(routine?.id) {
         mutableStateOf(goals.filter { routine?.id in it.weeklyTargets }.map { it.id }.toSet())
     }
@@ -2186,13 +2249,35 @@ fun CustomRoutineCreatorScreen(
         restSeconds != null && restSeconds in 0..300
     val canCreate = title.isNotBlank() && goal.isNotBlank() && steps.isNotEmpty() &&
         steps.all { it.name.isNotBlank() && it.durationSeconds in 10..600 && it.restSeconds in 0..300 }
+    val stepLabel = if (routineType == RoutineType.Workout) "Exercise" else "Stretch"
+    val stepLabelLowercase = stepLabel.lowercase()
 
     FocusedScreen {
         BackHeader(if (routine == null) "Custom routine" else "Edit routine",
             { onEvent(StretchifyEvent.NavigateBack) })
         Text(if (routine == null) "Create a routine card" else "Update ${routine.title}",
             style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("Build a sequence of timed stretches. A routine needs at least one stretch.")
+        Text(
+            if (routineType == RoutineType.Workout)
+            {
+                "Build a sequence of timed exercises. A workout needs at least one exercise."
+            }
+            else
+            {
+                "Build a sequence of timed stretches. A routine needs at least one stretch."
+            }
+        )
+        Text("Routine type", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            RoutineType.entries.forEach { type ->
+                FilterChip(
+                    selected = routineType == type,
+                    onClick = { routineType = type },
+                    label = { Text(type.name) },
+                    modifier = Modifier.testTag("routine-type-${type.name.lowercase()}")
+                )
+            }
+        }
         OutlinedTextField(
             value = title,
             onValueChange = { title = it },
@@ -2226,7 +2311,7 @@ fun CustomRoutineCreatorScreen(
         OutlinedTextField(
             value = stretchName,
             onValueChange = { stretchName = it },
-            label = { Text("Stretch name") },
+            label = { Text("$stepLabel name") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag("custom-stretch-name")
         )
@@ -2240,7 +2325,7 @@ fun CustomRoutineCreatorScreen(
         OutlinedTextField(
             value = restText,
             onValueChange = { value -> restText = value.filter(Char::isDigit).take(3) },
-            label = { Text("Rest after stretch in seconds (0–300)") },
+            label = { Text("Rest after $stepLabelLowercase in seconds (0–300)") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag("custom-routine-rest")
         )
@@ -2258,7 +2343,7 @@ fun CustomRoutineCreatorScreen(
             enabled = canAddStretch,
             modifier = Modifier.fillMaxWidth().testTag("add-custom-stretch")
         ) {
-            Text("Add stretch")
+            Text("Add $stepLabelLowercase")
         }
         if (steps.isNotEmpty())
         {
@@ -2266,7 +2351,7 @@ fun CustomRoutineCreatorScreen(
             steps.forEachIndexed { index, step ->
                 GlassCard(contentPadding = PaddingValues(14.dp)) {
                     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Stretch ${index + 1}", fontWeight = FontWeight.SemiBold)
+                        Text("$stepLabel ${index + 1}", fontWeight = FontWeight.SemiBold)
                         OutlinedTextField(
                             value = step.name,
                             onValueChange = { value ->
@@ -2274,7 +2359,7 @@ fun CustomRoutineCreatorScreen(
                                     if (stepIndex == index) item.copy(name = value) else item
                                 }
                             },
-                            label = { Text("Stretch name") },
+                            label = { Text("$stepLabel name") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -2282,13 +2367,14 @@ fun CustomRoutineCreatorScreen(
                             OutlinedTextField(
                                 value = step.durationSeconds.toString(),
                                 onValueChange = { value ->
-                                    value.filter(Char::isDigit).toIntOrNull()?.takeIf { it in 10..600 }?.let { seconds ->
+                                    value.filter(Char::isDigit).toIntOrNull()
+                                        ?.takeIf { it in 10..600 }?.let { seconds ->
                                         steps = steps.mapIndexed { stepIndex, item ->
                                             if (stepIndex == index) item.copy(durationSeconds = seconds) else item
                                         }
                                     }
                                 },
-                                label = { Text("Stretch sec") },
+                                label = { Text("$stepLabel sec") },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)
                             )
@@ -2351,6 +2437,7 @@ fun CustomRoutineCreatorScreen(
                         title = title,
                         goal = goal,
                         steps = steps,
+                        routineType = routineType,
                         goalIds = linkedGoalIds
                     )
                 )

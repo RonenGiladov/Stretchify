@@ -7,6 +7,7 @@ import com.stretchify.model.AlertTiming
 import com.stretchify.model.DashboardCard
 import com.stretchify.model.DashboardCardType
 import com.stretchify.model.RoutineStep
+import com.stretchify.model.RoutineType
 import com.stretchify.model.Stretch
 import com.stretchify.model.StretchRoutine
 import com.stretchify.model.LiquidPreset
@@ -219,7 +220,10 @@ class StretchifyRepository(context: Context)
                             {
                                 listOf(defaultCategory)
                             },
-                            isFeatured = item.optBoolean("isFeatured", false)
+                            isFeatured = item.optBoolean("isFeatured", false),
+                            routineType = RoutineType.entries.firstOrNull {
+                                it.name == item.optString("routineType")
+                            } ?: RoutineType.Stretch
                         )
                     )
                 }
@@ -340,6 +344,7 @@ class StretchifyRepository(context: Context)
                     .put("difficulty", routine.difficulty)
                     .put("targetAreas", JSONArray(routine.targetAreas))
                     .put("isFeatured", routine.isFeatured)
+                    .put("routineType", routine.routineType.name)
                     .put("steps", stepsJson)
             )
         }
@@ -489,7 +494,10 @@ class StretchifyRepository(context: Context)
                             completedAtMillis = item.getLong("completedAtMillis"),
                             elapsedSeconds = item.getInt("elapsedSeconds"),
                             completedStepCount = item.getInt("completedStepCount"),
-                            routineTitle = item.optString("routineTitle").ifBlank { null }
+                            routineTitle = item.optString("routineTitle").ifBlank { null },
+                            routineType = RoutineType.entries.firstOrNull {
+                                it.name == item.optString("routineType")
+                            } ?: RoutineType.Stretch
                         )
                     )
                 }
@@ -513,6 +521,7 @@ class StretchifyRepository(context: Context)
                     .put("elapsedSeconds", record.elapsedSeconds)
                     .put("completedStepCount", record.completedStepCount)
                     .put("routineTitle", record.routineTitle ?: "")
+                    .put("routineType", record.routineType.name)
             )
         }
         preferences.edit().putString(COMPLETIONS_KEY, jsonArray.toString()).apply()

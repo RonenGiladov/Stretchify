@@ -176,8 +176,10 @@ fun StretchifyTheme(
     CompositionLocalProvider(
         LocalLiquidPreset provides liquidPreset.takeIf { themePreference == ThemePreference.Liquid },
         LocalGlassFinish provides glassFinish,
-        LocalColorfulLight provides (themePreference == ThemePreference.ColorfulLight),
-        LocalColorfulDark provides (themePreference == ThemePreference.ColorfulDark)
+        LocalColorfulLight provides (themePreference == ThemePreference.ColorfulLight ||
+            themePreference == ThemePreference.System && !isDarkTheme),
+        LocalColorfulDark provides (themePreference == ThemePreference.ColorfulDark ||
+            themePreference == ThemePreference.System && isDarkTheme)
     ) {
         MaterialTheme(
             colorScheme = when
@@ -189,6 +191,8 @@ fun StretchifyTheme(
                         onPrimary = if (isDarkTheme) Color(0xFF172033) else Color.White
                     )
                 themePreference == ThemePreference.ColorfulDark -> StretchifyColorfulDarkColorScheme
+                themePreference == ThemePreference.System && isDarkTheme -> StretchifyColorfulDarkColorScheme
+                themePreference == ThemePreference.System -> StretchifyColorfulLightColorScheme
                 isDarkTheme -> StretchifyDarkColorScheme
                 themePreference == ThemePreference.ColorfulLight -> StretchifyColorfulLightColorScheme
                 else -> StretchifyLightColorScheme

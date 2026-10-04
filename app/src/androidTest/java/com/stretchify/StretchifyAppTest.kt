@@ -3,6 +3,7 @@ package com.stretchify
 import androidx.compose.ui.geometry.Rect
 import android.content.Intent
 import android.os.Build
+import android.view.WindowManager
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.test.assert
@@ -31,6 +32,7 @@ import androidx.test.espresso.Espresso
 import com.stretchify.data.SampleRoutineProvider
 import com.stretchify.model.CompletionRecord
 import com.stretchify.model.LiquidPreset
+import com.stretchify.model.StretchRoutine
 import com.stretchify.session.SessionEngine
 import com.stretchify.session.SessionPhase
 import com.stretchify.widget.StretchWidgetProvider
@@ -220,6 +222,57 @@ class StretchifyAppNavigationTest
     }
 
     @Test
+    fun activeRoutineControlsKeepScreenOnState()
+    {
+        val keepScreenOnFlag = WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders").performClick()
+        composeRule.onNodeWithTag("start-session-button").performScrollTo().performClick()
+
+        composeRule.waitUntil {
+            composeRule.activity.window.attributes.flags and keepScreenOnFlag != 0
+        }
+        composeRule.onNodeWithTag("start-now-button").performClick()
+        composeRule.waitUntil {
+            composeRule.activity.window.attributes.flags and keepScreenOnFlag != 0
+        }
+
+        composeRule.onNodeWithTag("pause-resume-button").performClick()
+        composeRule.waitUntil {
+            composeRule.activity.window.attributes.flags and keepScreenOnFlag == 0
+        }
+        composeRule.onNodeWithTag("pause-resume-button").performClick()
+        composeRule.waitUntil {
+            composeRule.activity.window.attributes.flags and keepScreenOnFlag != 0
+        }
+
+        composeRule.onNodeWithContentDescription("Exit session").performClick()
+        composeRule.waitUntil {
+            composeRule.activity.window.attributes.flags and keepScreenOnFlag == 0
+        }
+        composeRule.onNodeWithTag("confirm-session-exit").performClick()
+        composeRule.waitUntil {
+            composeRule.activity.window.attributes.flags and keepScreenOnFlag == 0
+        }
+    }
+
+    @Test
+    fun cancellingCountdownClearsKeepScreenOnState()
+    {
+        val keepScreenOnFlag = WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders").performClick()
+        composeRule.onNodeWithTag("start-session-button").performScrollTo().performClick()
+        composeRule.waitUntil {
+            composeRule.activity.window.attributes.flags and keepScreenOnFlag != 0
+        }
+
+        composeRule.onNodeWithText("Cancel").performClick()
+
+        composeRule.waitUntil {
+            composeRule.activity.window.attributes.flags and keepScreenOnFlag == 0
+        }
+    }
+
+    @Test
     fun activeSessionButtonsHaveMeaningfulLabels()
     {
         composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders").performClick()
@@ -348,6 +401,20 @@ class StretchifyAppNavigationTest
 
         composeRule.onNodeWithContentDescription("Home tab").performClick()
         composeRule.onNodeWithTag("home-screen").assertIsDisplayed()
+    }
+
+    @Test
+    fun customWorkoutCreatorUsesExerciseFields()
+    {
+        composeRule.onNodeWithContentDescription("Library tab").performClick()
+        composeRule.onNodeWithTag("library-create-custom-routine-button").performClick()
+        composeRule.onNodeWithTag("routine-type-workout").performClick()
+
+        composeRule.onNodeWithText("Exercise name").assertIsDisplayed()
+        composeRule.onNodeWithText("Add exercise").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "Build a sequence of timed exercises. A workout needs at least one exercise."
+        ).assertIsDisplayed()
     }
 
     @Test
@@ -601,9 +668,27 @@ class StretchifyLayoutBoundsTest
         composeRule.onNodeWithTag("skip-button").assertHasClickAction()
     }
 
-    private fun setActiveSessionContent(width: Int, height: Int)
+    @Test
+    fun workoutSessionUsesExerciseTerminology()
     {
-        val routine = SampleRoutineProvider.roundedShouldersRoutine
+        val workout = SampleRoutineProvider.routines.single { it.id == "full-body-starter" }
+        setActiveSessionContent(width = 430, height = 932, routine = workout)
+
+        composeRule.onNodeWithTag("timer-panel").assert(
+            hasContentDescription("Exercise timer", substring = true)
+        )
+        composeRule.onNodeWithTag("session-progress").assert(
+            hasAnyDescendant(hasText("Exercise 1 of 5"))
+        )
+        composeRule.onNodeWithText("March in Place").assertIsDisplayed()
+    }
+
+    private fun setActiveSessionContent(
+        width: Int,
+        height: Int,
+        routine: StretchRoutine = SampleRoutineProvider.roundedShouldersRoutine
+    )
+    {
         val sessionState = SessionEngine(routine).startSession(SessionEngine(routine).initialState()).copy(
             phase = SessionPhase.Stretching
         )

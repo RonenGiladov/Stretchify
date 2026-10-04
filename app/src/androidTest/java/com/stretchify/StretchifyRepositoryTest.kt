@@ -14,7 +14,10 @@ import com.stretchify.model.LiquidPreset
 import com.stretchify.model.GlassFinish
 import com.stretchify.model.GoalRevision
 import com.stretchify.model.GoalRoutine
+import com.stretchify.model.RoutineType
 import java.time.DayOfWeek
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -169,7 +172,14 @@ class StretchifyRepositoryTest
     fun valuesSurviveRoundTripAndDuplicateCompletionIdsAreRemoved()
     {
         val cards = DashboardLayout.defaultCards().take(2)
-        val completion = CompletionRecord("id", "rounded-shoulders", 100L, 60, 3)
+        val completion = CompletionRecord(
+            "id",
+            "full-body-starter",
+            100L,
+            60,
+            3,
+            routineType = RoutineType.Workout
+        )
 
         repository.saveDashboardCards(cards)
         repository.saveThemePreference(ThemePreference.Dark)
@@ -233,7 +243,8 @@ class StretchifyRepositoryTest
         val customRoutine = SampleRoutineProvider.roundedShouldersRoutine.copy(
             id = "custom-test",
             title = "Custom test",
-            category = "Custom"
+            category = "Custom",
+            routineType = RoutineType.Workout
         )
         val override = SampleRoutineProvider.lowerBackReset.copy(title = "My back reset")
 
@@ -242,6 +253,32 @@ class StretchifyRepositoryTest
 
         assertEquals(listOf(customRoutine), repository.loadCustomRoutines())
         assertEquals(listOf(override), repository.loadRoutineOverrides())
+    }
+
+    @Test
+    fun legacyRoutinesAndCompletionsDefaultToStretch()
+    {
+        val legacyRoutine = JSONObject()
+            .put("id", "legacy")
+            .put("title", "Legacy routine")
+            .put("goal", "Keep moving")
+            .put("stretchId", "legacy-step")
+            .put("stretchName", "Legacy stretch")
+            .put("durationSeconds", 30)
+        val legacyCompletion = JSONObject()
+            .put("id", "legacy-completion")
+            .put("routineId", "legacy")
+            .put("completedAtMillis", 100L)
+            .put("elapsedSeconds", 30)
+            .put("completedStepCount", 1)
+        context.getSharedPreferences(StretchifyRepository.PREFERENCES_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(StretchifyRepository.CUSTOM_ROUTINES_KEY, JSONArray().put(legacyRoutine).toString())
+            .putString(StretchifyRepository.COMPLETIONS_KEY, JSONArray().put(legacyCompletion).toString())
+            .commit()
+
+        assertEquals(RoutineType.Stretch, repository.loadCustomRoutines().single().routineType)
+        assertEquals(RoutineType.Stretch, repository.loadCompletionRecords().single().routineType)
     }
 
     @Test
