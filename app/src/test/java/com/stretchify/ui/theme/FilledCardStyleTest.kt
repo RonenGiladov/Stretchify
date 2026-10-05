@@ -1,12 +1,63 @@
 package com.stretchify.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.geometry.Size
+import com.stretchify.ui.components.calculateCardGeometry
+import com.stretchify.ui.components.calculateReadableCardStyle
+import kotlin.math.hypot
+import kotlin.math.sqrt
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 class FilledCardStyleTest
 {
+    @Test
+    fun wideCardCircleKeepsTopGapAndReachesBottomCorners()
+    {
+        listOf(Size(360f, 112f), Size(360f, 150f)).forEach { size ->
+            val (center, radius) = calculateCardGeometry(size)
+            val outerRadius = radius * 0.55f
+            assertEquals(size.height * 0.15f, center.y - outerRadius, 0.001f)
+            val depth = center.y - size.height
+            assertEquals(size.width * 0.47f, sqrt(outerRadius * outerRadius - depth * depth), 0.001f)
+        }
+        val size = Size(360f, 260f)
+        val (center, radius) = calculateCardGeometry(size)
+        assertEquals(size.height, center.y, 0.001f)
+        assertEquals(hypot(size.width / 2f, size.height), radius, 0.001f)
+    }
+
+    @Test
+    fun readablePalettesMaintainContrastAcrossEveryGradientSegment()
+    {
+        listOf(false, true).forEach { isDark ->
+            repeat(5) { seed ->
+                val style = calculateReadableCardStyle(filledCardStyle(false, seed, isDark))
+                listOf(style.centerColor to style.bandColor, style.bandColor to style.outerColor)
+                    .forEach { (start, end) ->
+                        for (sample in 0..1000)
+                        {
+                            val fraction = sample / 1000f
+                            val background = Color(
+                                start.red + (end.red - start.red) * fraction,
+                                start.green + (end.green - start.green) * fraction,
+                                start.blue + (end.blue - start.blue) * fraction
+                            ).luminance()
+                            listOf(style.contentColor, style.secondaryContentColor).forEach { text ->
+                                val foreground = text.luminance()
+                                val contrast = (maxOf(background, foreground) + 0.05f) /
+                                    (minOf(background, foreground) + 0.05f)
+                                assertTrue("Palette $seed dark=$isDark contrast=$contrast", contrast >= 4.5f)
+                            }
+                        }
+                    }
+            }
+        }
+    }
+
     @Test
     fun colorfulLightSeedsRotateThroughEveryPalette()
     {

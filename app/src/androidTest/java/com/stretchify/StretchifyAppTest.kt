@@ -1,6 +1,9 @@
 package com.stretchify
 
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsActions
 import android.content.Intent
 import android.os.Build
 import android.view.WindowManager
@@ -20,10 +23,12 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.dp
@@ -95,7 +100,7 @@ class StretchifyAppNavigationTest
         composeRule.onNodeWithTag("home-screen")
             .performScrollToNode(hasTestTag("dashboard-card-weekly-progress"))
         composeRule.onNodeWithTag("dashboard-card-weekly-progress")
-            .assert(hasAnyDescendant(hasText("3-session goal")))
+            .assert(hasText("3-session goal"))
         composeRule.onNodeWithTag("weekly-progress-ring")
             .assert(hasContentDescription("0 of 3 sessions this week"))
 
@@ -115,7 +120,7 @@ class StretchifyAppNavigationTest
         }
 
         composeRule.onNodeWithTag("dashboard-card-weekly-progress")
-            .assert(hasAnyDescendant(hasText("4 sessions")))
+            .assert(hasText("4 sessions"))
         composeRule.onNodeWithTag("weekly-progress-ring")
             .assert(hasContentDescription("4 of 3 sessions this week"))
     }
@@ -190,6 +195,7 @@ class StretchifyAppNavigationTest
     @Test
     fun tappingRoutineOpensPreview()
     {
+        composeRule.onNodeWithTag("home-screen").performScrollToIndex(3)
         composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders").performClick()
 
         composeRule.onNodeWithText("Doorway Chest Opener", substring = true).performScrollTo().assertIsDisplayed()
@@ -435,7 +441,8 @@ class StretchifyAppNavigationTest
         composeRule.onNodeWithContentDescription("Progress tab").performClick()
         composeRule.onNodeWithTag("progress-screen")
             .performScrollToNode(hasTestTag("history-sheet-session"))
-        composeRule.onNodeWithTag("history-sheet-session").performClick()
+        composeRule.onNodeWithTag("history-sheet-session")
+            .performSemanticsAction(SemanticsActions.OnClick) { it() }
         composeRule.onNodeWithTag("session-actions-sheet").assertIsDisplayed()
         composeRule.onNodeWithText("2 min · 3 stretches").assertIsDisplayed()
         composeRule.onNodeWithTag("sheet-edit-session").performClick()
@@ -444,7 +451,8 @@ class StretchifyAppNavigationTest
         composeRule.onNodeWithContentDescription("Back").performClick()
         composeRule.onNodeWithTag("progress-screen")
             .performScrollToNode(hasTestTag("history-sheet-session"))
-        composeRule.onNodeWithTag("history-sheet-session").performClick()
+        composeRule.onNodeWithTag("history-sheet-session")
+            .performSemanticsAction(SemanticsActions.OnClick) { it() }
         composeRule.onNodeWithTag("sheet-delete-session").performClick()
         composeRule.onNodeWithText("Delete this session?").assertIsDisplayed()
         composeRule.onNodeWithText("Cancel").performClick()
@@ -468,10 +476,11 @@ class StretchifyAppNavigationTest
     @Test
     fun longPressingDashboardCardOpensEditorAndControlsAreAccessible()
     {
+        composeRule.onNodeWithTag("home-screen").performScrollToIndex(3)
         composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
-            .performTouchInput { longClick() }
+            .performScrollTo().performTouchInput { longClick() }
 
-        composeRule.onNodeWithTag("add-card-button").assertIsDisplayed()
+        composeRule.onNodeWithTag("add-card-button").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Remove Fix Rounded Shoulders").assertHasClickAction()
         composeRule.onNodeWithTag("dashboard-done-button").assertHasClickAction()
     }
@@ -485,7 +494,8 @@ class StretchifyAppNavigationTest
         composeRule.onNodeWithContentDescription("Library tab").performClick()
         composeRule.onNodeWithTag("library-screen")
             .performScrollToNode(hasTestTag("add-home-hip-mobility"))
-        composeRule.onNodeWithTag("add-home-hip-mobility").performClick()
+        composeRule.onNodeWithTag("add-home-hip-mobility")
+            .performSemanticsAction(SemanticsActions.OnClick) { it() }
 
         composeRule.onNodeWithTag("add-home-hip-mobility").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Home tab").performClick()
@@ -499,16 +509,37 @@ class StretchifyAppNavigationTest
     {
         composeRule.onNodeWithTag("customize-home-button").performClick()
         composeRule.onNodeWithTag("reset-dashboard-button").performClick()
-        val originalLeft = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
-            .fetchSemanticsNode().boundsInRoot.left
+        composeRule.onNodeWithTag("home-screen").performScrollToIndex(3)
+        val originalBounds = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
+            .fetchSemanticsNode().boundsInRoot
+        val nextBounds = composeRule.onNodeWithTag("dashboard-card-routine-lower-back-reset")
+            .fetchSemanticsNode().boundsInRoot
+        val distance = nextBounds.center.x - originalBounds.center.x + 40f
 
         composeRule.onNodeWithTag("move-card-routine-rounded-shoulders")
-            .performTouchInput { swipeRight() }
+            .performTouchInput {
+                down(center)
+                moveBy(Offset(distance, 0f))
+            }
+        val heldLeft = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
+            .fetchSemanticsNode().boundsInRoot.left
+        assertTrue("Card must follow the finger before release", heldLeft > originalBounds.left + 20f)
+        assertTrue(
+            "Dragging must not save intermediate positions",
+            StretchifyRepository(composeRule.activity).loadDashboardCards()
+                .first { it.id == "routine-rounded-shoulders" }.position == 1
+        )
+        composeRule.onNodeWithTag("move-card-routine-rounded-shoulders").performTouchInput { up() }
         composeRule.waitForIdle()
 
         val movedLeft = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
             .fetchSemanticsNode().boundsInRoot.left
-        assertTrue(movedLeft > originalLeft)
+        assertTrue(movedLeft > originalBounds.left)
+        composeRule.activityRule.scenario.recreate()
+        assertTrue(
+            StretchifyRepository(composeRule.activity).loadDashboardCards()
+                .first { it.id == "routine-rounded-shoulders" }.position == 2
+        )
     }
 
     @Test
@@ -516,11 +547,24 @@ class StretchifyAppNavigationTest
     {
         composeRule.onNodeWithTag("customize-home-button").performClick()
         composeRule.onNodeWithTag("reset-dashboard-button").performClick()
+        composeRule.onNodeWithTag("home-screen").performScrollToIndex(3)
         val originalWidth = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
             .fetchSemanticsNode().boundsInRoot.width
 
         composeRule.onNodeWithTag("resize-card-routine-rounded-shoulders")
-            .performTouchInput { swipeRight() }
+            .performTouchInput {
+                down(center)
+                moveBy(Offset(originalWidth * 0.8f, 0f))
+            }
+        val heldWidth = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
+            .fetchSemanticsNode().boundsInRoot.width
+        assertTrue("Card must resize before release", heldWidth > originalWidth + 20f)
+        assertTrue(
+            "Resizing must not save intermediate sizes",
+            StretchifyRepository(composeRule.activity).loadDashboardCards()
+                .first { it.id == "routine-rounded-shoulders" }.widthSpan == 1
+        )
+        composeRule.onNodeWithTag("resize-card-routine-rounded-shoulders").performTouchInput { up() }
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
@@ -528,6 +572,212 @@ class StretchifyAppNavigationTest
         val resizedWidth = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
             .fetchSemanticsNode().boundsInRoot.width
         assertTrue("Expected width to grow from $originalWidth but was $resizedWidth", resizedWidth > originalWidth)
+        composeRule.activityRule.scenario.recreate()
+        assertTrue(
+            StretchifyRepository(composeRule.activity).loadDashboardCards()
+                .first { it.id == "routine-rounded-shoulders" }.widthSpan == 2
+        )
+    }
+
+    @Test
+    fun cancellingCardDragRestoresTheOriginalPosition()
+    {
+        composeRule.onNodeWithTag("customize-home-button").performClick()
+        composeRule.onNodeWithTag("reset-dashboard-button").performClick()
+        composeRule.onNodeWithTag("home-screen").performScrollToIndex(3)
+        val originalBounds = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
+            .fetchSemanticsNode().boundsInRoot
+        composeRule.onNodeWithTag("move-card-routine-rounded-shoulders").performTouchInput {
+            down(center)
+            moveBy(Offset(originalBounds.width + 60f, 0f))
+        }
+        assertTrue(composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
+            .fetchSemanticsNode().boundsInRoot.left > originalBounds.left)
+        composeRule.onNodeWithTag("move-card-routine-rounded-shoulders").performTouchInput { cancel() }
+        composeRule.waitForIdle()
+        val restored = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(kotlin.math.abs(restored.left - originalBounds.left) < 2f)
+        assertTrue(StretchifyRepository(composeRule.activity).loadDashboardCards()
+            .first { it.id == "routine-rounded-shoulders" }.position == 1)
+    }
+
+    @Test
+    fun resizingCanReverseAndCancelWithinOneGesture()
+    {
+        composeRule.onNodeWithTag("customize-home-button").performClick()
+        composeRule.onNodeWithTag("reset-dashboard-button").performClick()
+        composeRule.onNodeWithTag("home-screen").performScrollToIndex(3)
+        val originalBounds = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
+            .fetchSemanticsNode().boundsInRoot
+        val distance = originalBounds.width * 0.8f
+        composeRule.onNodeWithTag("resize-card-routine-rounded-shoulders").performTouchInput {
+            down(center)
+            moveBy(Offset(distance, 0f))
+        }
+        composeRule.onNodeWithTag("resize-size-routine-rounded-shoulders").assert(hasText("2×2"))
+        composeRule.onNodeWithTag("resize-card-routine-rounded-shoulders").performTouchInput {
+            moveBy(Offset(-distance, 0f))
+        }
+        composeRule.onNodeWithTag("resize-size-routine-rounded-shoulders").assert(hasText("1×2"))
+        composeRule.onNodeWithTag("resize-card-routine-rounded-shoulders").performTouchInput {
+            moveBy(Offset(distance, 0f))
+        }
+        composeRule.onNodeWithTag("resize-size-routine-rounded-shoulders").assert(hasText("2×2"))
+        composeRule.onNodeWithTag("resize-card-routine-rounded-shoulders").performTouchInput { cancel() }
+        composeRule.waitForIdle()
+        val restored = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(kotlin.math.abs(restored.width - originalBounds.width) < 2f)
+        assertTrue(StretchifyRepository(composeRule.activity).loadDashboardCards()
+            .first { it.id == "routine-rounded-shoulders" }.widthSpan == 1)
+    }
+
+    @Test
+    fun draggingCardCanReverseBeforeRelease()
+    {
+        composeRule.onNodeWithTag("customize-home-button").performClick()
+        composeRule.onNodeWithTag("reset-dashboard-button").performClick()
+        composeRule.onNodeWithTag("home-screen").performScrollToIndex(3)
+        val originalBounds = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
+            .fetchSemanticsNode().boundsInRoot
+        val distance = originalBounds.width + 100f
+        composeRule.onNodeWithTag("move-card-routine-rounded-shoulders").performTouchInput {
+            down(center)
+            moveBy(Offset(distance, 0f))
+        }
+        assertTrue(composeRule.onNodeWithTag("dashboard-card-routine-lower-back-reset")
+            .fetchSemanticsNode().boundsInRoot.left < originalBounds.center.x)
+        composeRule.onNodeWithTag("move-card-routine-rounded-shoulders").performTouchInput {
+            moveBy(Offset(-distance - 40f, 0f))
+        }
+        composeRule.onNodeWithTag("move-card-routine-rounded-shoulders").performTouchInput { up() }
+        composeRule.waitForIdle()
+        assertTrue(kotlin.math.abs(composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
+            .fetchSemanticsNode().boundsInRoot.left - originalBounds.left) < 2f)
+        assertTrue(StretchifyRepository(composeRule.activity).loadDashboardCards()
+            .first { it.id == "routine-rounded-shoulders" }.position == 1)
+    }
+
+    @Test
+    fun diagonalResizeUpdatesBothDimensionsAndClampsHeight()
+    {
+        composeRule.onNodeWithTag("customize-home-button").performClick()
+        composeRule.onNodeWithTag("reset-dashboard-button").performClick()
+        composeRule.onNodeWithTag("home-screen").performScrollToIndex(3)
+        val originalBounds = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
+            .fetchSemanticsNode().boundsInRoot
+        composeRule.onNodeWithTag("resize-card-routine-rounded-shoulders").performTouchInput {
+            down(center)
+            moveBy(Offset(originalBounds.width * 0.8f, -originalBounds.height * 0.8f))
+        }
+        composeRule.onNodeWithTag("resize-size-routine-rounded-shoulders").assert(hasText("2×1"))
+        val heldBounds = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(heldBounds.width > originalBounds.width)
+        assertTrue(heldBounds.height < originalBounds.height)
+        assertTrue(kotlin.math.abs(heldBounds.top - originalBounds.top) < 2f)
+        composeRule.onNodeWithTag("resize-card-routine-rounded-shoulders").performTouchInput { up() }
+        composeRule.waitForIdle()
+        val saved = StretchifyRepository(composeRule.activity).loadDashboardCards()
+            .first { it.id == "routine-rounded-shoulders" }
+        assertTrue(saved.widthSpan == 2 && saved.heightSpan == 1)
+    }
+
+    @Test
+    fun verticalResizeClampsAtMaximumHeight()
+    {
+        composeRule.onNodeWithTag("customize-home-button").performClick()
+        composeRule.onNodeWithTag("reset-dashboard-button").performClick()
+        composeRule.onNodeWithTag("home-screen").performScrollToIndex(3)
+        val originalBounds = composeRule.onNodeWithTag("dashboard-card-today")
+            .fetchSemanticsNode().boundsInRoot
+        composeRule.onNodeWithTag("resize-card-today").performTouchInput {
+            down(center)
+            moveBy(Offset(0f, originalBounds.height))
+        }
+        composeRule.onNodeWithTag("resize-size-today").assert(hasText("2×3"))
+        val heldBounds = composeRule.onNodeWithTag("dashboard-card-today")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(heldBounds.height > originalBounds.height)
+        assertTrue(kotlin.math.abs(heldBounds.width - originalBounds.width) < 2f)
+        composeRule.onNodeWithTag("resize-card-today").performTouchInput { up() }
+        composeRule.waitForIdle()
+        assertTrue(StretchifyRepository(composeRule.activity).loadDashboardCards()
+            .first { it.id == "today" }.heightSpan == 3)
+    }
+
+    @Test
+    fun draggingFullWidthCardAcrossMultipleSlotsClampsAtBothEnds()
+    {
+        composeRule.onNodeWithTag("customize-home-button").performClick()
+        composeRule.onNodeWithTag("reset-dashboard-button").performClick()
+        composeRule.onNodeWithTag("home-screen").performScrollToIndex(3)
+        val distance = composeRule.onNodeWithTag("home-screen").fetchSemanticsNode().boundsInRoot.height * 2f
+        composeRule.mainClock.autoAdvance = false
+        composeRule.onNodeWithTag("move-card-today").performTouchInput {
+            down(center)
+            moveBy(Offset(0f, distance))
+            up()
+        }
+        composeRule.mainClock.autoAdvance = true
+        composeRule.waitForIdle()
+        assertTrue(StretchifyRepository(composeRule.activity).loadDashboardCards()
+            .first { it.id == "today" }.position == 3)
+        composeRule.onNodeWithTag("home-screen").performScrollToNode(hasTestTag("move-card-today"))
+        composeRule.mainClock.autoAdvance = false
+        composeRule.onNodeWithTag("move-card-today").performTouchInput {
+            down(center)
+            moveBy(Offset(0f, -distance))
+            up()
+        }
+        composeRule.mainClock.autoAdvance = true
+        composeRule.waitForIdle()
+        assertTrue(StretchifyRepository(composeRule.activity).loadDashboardCards()
+            .first { it.id == "today" }.position == 0)
+    }
+
+    @Test
+    fun holdingDraggedCardNearTheBottomScrollsHome()
+    {
+        composeRule.onNodeWithTag("customize-home-button").performClick()
+        composeRule.onNodeWithTag("reset-dashboard-button").performClick()
+        composeRule.onNodeWithTag("home-screen").performScrollToIndex(3)
+        val home = composeRule.onNodeWithTag("home-screen")
+        val viewport = home.fetchSemanticsNode().boundsInRoot
+        val originalScroll = home.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+        val moveBounds = composeRule.onNodeWithTag("move-card-today").fetchSemanticsNode().boundsInRoot
+        composeRule.mainClock.autoAdvance = false
+        composeRule.onNodeWithTag("move-card-today").performTouchInput {
+            down(center)
+            moveBy(Offset(0f, viewport.bottom - moveBounds.center.y - 4f))
+        }
+        composeRule.mainClock.advanceTimeBy(800)
+        val scrolled = home.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+        assertTrue("Holding a card at the bottom must scroll the list", scrolled > originalScroll)
+        composeRule.onNodeWithTag("move-card-today").performTouchInput { cancel() }
+        composeRule.mainClock.autoAdvance = true
+        composeRule.waitForIdle()
+        assertTrue(StretchifyRepository(composeRule.activity).loadDashboardCards()
+            .first { it.id == "today" }.position == 0)
+    }
+
+    @Test
+    fun singleSmallCardKeepsItsContentAndResizeHandleVisible()
+    {
+        val repository = StretchifyRepository(composeRule.activity)
+        repository.saveDashboardCards(repository.loadDashboardCards()
+            .filter { it.id == "routine-rounded-shoulders" }
+            .map { it.copy(position = 0, widthSpan = 1, heightSpan = 1) })
+        composeRule.activityRule.scenario.recreate()
+        composeRule.onNodeWithTag("customize-home-button").performClick()
+        composeRule.onNodeWithTag("home-screen").performScrollToIndex(3)
+        val bounds = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue("Content must be allowed to grow beyond the minimum span height",
+            bounds.height > with(composeRule.density) { 112.dp.toPx() })
+        composeRule.onNodeWithTag("resize-card-routine-rounded-shoulders").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Remove Fix Rounded Shoulders").assertIsDisplayed()
     }
 
     @Test
@@ -535,6 +785,7 @@ class StretchifyAppNavigationTest
     {
         composeRule.onNodeWithTag("customize-home-button").performClick()
         composeRule.onNodeWithTag("reset-dashboard-button").performClick()
+        composeRule.onNodeWithTag("home-screen").performScrollToIndex(3)
 
         composeRule.onNodeWithTag("resize-size-routine-rounded-shoulders")
             .performTouchInput { swipeRight() }

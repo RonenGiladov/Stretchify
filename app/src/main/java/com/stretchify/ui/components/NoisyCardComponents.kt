@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.IntSize
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -40,7 +41,7 @@ import kotlin.math.hypot
 import kotlin.math.max
 
 private const val NOISE_PHASE_COUNT = 4
-private const val NOISE_PHASE_DURATION_MILLIS = 400L
+private const val NOISE_PHASE_DURATION_MILLIS = 200L
 private const val FALLBACK_LONGEST_EDGE = 240f
 
 private val LocalNoisyCardPhase = compositionLocalOf { 0 }
@@ -68,7 +69,7 @@ internal fun NoisyCardAnimationHost(content: @Composable () -> Unit)
                     else
                     {
                         phase = 0
-                        delay(250L)
+                        delay(200L)
                     }
                 }
             }
@@ -83,6 +84,7 @@ internal fun NoisyCardAnimationHost(content: @Composable () -> Unit)
 
 internal fun Modifier.noisyCardBackground(style: FilledCardStyle): Modifier = composed {
     val phase = LocalNoisyCardPhase.current
+    val readableStyle = remember(style) { calculateReadableCardStyle(style) }
     val renderer = remember {
         if (Build.VERSION.SDK_INT >= 33)
         {
@@ -101,13 +103,13 @@ internal fun Modifier.noisyCardBackground(style: FilledCardStyle): Modifier = co
     drawWithCache {
         val fallbackImage = if (renderer == null)
         {
-            createStaticNoisyGradient(style, size)
+            createStaticNoisyGradient(readableStyle, size)
         }
         else null
         onDrawBehind {
             if (renderer != null && Build.VERSION.SDK_INT >= 33 && size.width > 0f && size.height > 0f)
             {
-                renderer.update(style, size, phase)
+                renderer.update(readableStyle, size, phase)
                 drawRect(renderer.brush)
             }
             else if (fallbackImage != null)
@@ -127,7 +129,8 @@ internal fun createStaticNoisyGradient(style: FilledCardStyle, size: Size): Imag
     val width = ceil(size.width * scale).toInt().coerceAtLeast(1)
     val height = ceil(size.height * scale).toInt().coerceAtLeast(1)
     val pixels = IntArray(width * height)
-    val radius = hypot(width * 0.5f, height.toFloat())
+    val geometry = calculateCardGeometry(Size(width.toFloat(), height.toFloat()))
+    val radius = geometry.second
     val displacement = minOf(width, height) * 0.067f
     for (y in 0 until height)
     {
@@ -137,12 +140,52 @@ internal fun createStaticNoisyGradient(style: FilledCardStyle, size: Size): Imag
             val secondNoise = turbulence(x * 0.42f, y * 0.42f, style.noiseSeed + 37)
             val displacedX = x + (firstNoise - 0.5f) * displacement
             val displacedY = y + (secondNoise - 0.5f) * displacement
-            val distance = hypot(displacedX - width * 0.5f, displacedY - height) / radius
+            val distance = hypot(displacedX - geometry.first.x, displacedY - geometry.first.y) / radius
             val color = gradientColor(style, distance)
             pixels[y * width + x] = color.toArgb()
         }
     }
     return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888).asImageBitmap()
+}
+
+internal fun calculateCardGeometry(size: Size): Pair<Offset, Float>
+{
+    val height = size.height.coerceAtLeast(1f)
+    val depth = 0.85f * height
+    val halfWidth = 0.47f * size.width
+    val outerRadius = (halfWidth * halfWidth + depth * depth) / (2f * depth)
+    val blend = smooth(((size.width / height - 1.6f) / 0.4f).coerceIn(0f, 1f))
+    return Offset(size.width / 2f, interpolate(height, 0.15f * height + outerRadius, blend)) to
+        interpolate(hypot(size.width / 2f, height), outerRadius / 0.55f, blend)
+}
+
+internal fun calculateReadableCardStyle(style: FilledCardStyle): FilledCardStyle
+{
+    val tint = if (style.contentColor.luminance() > 0.5f) Color.Black else Color.White
+    var lower = 0f
+    var upper = 1f
+    repeat(16)
+    {
+        val amount = (lower + upper) / 2f
+        val candidate = style.copy(
+            centerColor = interpolateColor(style.centerColor, tint, amount),
+            bandColor = interpolateColor(style.bandColor, tint, amount),
+            outerColor = interpolateColor(style.outerColor, tint, amount)
+        )
+        val hasContrast = (0..200).all { sample ->
+            val background = gradientColor(candidate, sample / 200f).luminance()
+            listOf(style.contentColor, style.secondaryContentColor).all { foreground ->
+                val luminance = foreground.luminance()
+                (maxOf(background, luminance) + 0.05f) / (minOf(background, luminance) + 0.05f) >= 4.52f
+            }
+        }
+        if (hasContrast) upper = amount else lower = amount
+    }
+    return style.copy(
+        centerColor = interpolateColor(style.centerColor, tint, upper),
+        bandColor = interpolateColor(style.bandColor, tint, upper),
+        outerColor = interpolateColor(style.outerColor, tint, upper)
+    )
 }
 
 private fun gradientColor(style: FilledCardStyle, distance: Float): Color
@@ -206,6 +249,9 @@ internal class NoisyCardShader
     fun update(style: FilledCardStyle, size: Size, phase: Int)
     {
         shader.setFloatUniform("u_size", size.width, size.height)
+        val geometry = calculateCardGeometry(size)
+        shader.setFloatUniform("u_origin", geometry.first.x, geometry.first.y)
+        shader.setFloatUniform("u_radius", geometry.second)
         shader.setFloatUniform("u_seed", Math.floorMod(style.noiseSeed + phase, 4096).toFloat())
         setColor("u_center", style.centerColor)
         setColor("u_band", style.bandColor)
@@ -220,6 +266,8 @@ internal class NoisyCardShader
 
 private const val NOISY_CARD_SHADER = """
     uniform float2 u_size;
+    uniform float2 u_origin;
+    uniform float u_radius;
     uniform float u_seed;
     uniform float4 u_center;
     uniform float4 u_band;
@@ -252,8 +300,7 @@ private const val NOISY_CARD_SHADER = """
         ) - 0.5;
         float displacementScale = min(u_size.x, u_size.y) * 0.067;
         float2 displaced = coordinate + displacement * displacementScale;
-        float radius = length(float2(u_size.x * 0.5, u_size.y));
-        float distance = length(displaced - float2(u_size.x * 0.5, u_size.y)) / radius;
+        float distance = length(displaced - u_origin) / u_radius;
         float4 color = u_outer;
         if (distance <= 0.2) {
             color = u_center;

@@ -21,6 +21,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
+import androidx.compose.ui.text.ExperimentalTextApi
+import androidx.compose.ui.unit.sp
+import com.stretchify.R
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -84,11 +90,13 @@ fun GlassBackground(content: @Composable BoxScope.() -> Unit)
     })
 }
 
+@OptIn(ExperimentalTextApi::class)
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(20.dp),
     filledStyle: FilledCardStyle? = null,
+    useCardTypography: Boolean = false,
     content: @Composable () -> Unit
 )
 {
@@ -123,8 +131,32 @@ fun GlassCard(
             LocalFilledCardAccentColor provides (filledStyle?.contentColor ?: Color.White),
             LocalFilledCardSecondaryColor provides (filledStyle?.secondaryContentColor ?: Color(0xFFFDF8F5))
         ) {
-            androidx.compose.foundation.layout.Column(modifier = Modifier.padding(contentPadding)) {
-                content()
+            val typography = MaterialTheme.typography
+            val cardFont = androidx.compose.runtime.remember {
+                FontFamily(listOf(FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold).map { weight ->
+                    Font(R.font.nunito, weight = weight,
+                        variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight)))
+                })
+            }
+            MaterialTheme(typography = if (useCardTypography) typography.copy(
+                titleLarge = typography.titleLarge.copy(fontFamily = cardFont, fontSize = 22.sp,
+                    lineHeight = 28.sp, fontWeight = FontWeight.Bold),
+                titleMedium = typography.titleMedium.copy(fontFamily = cardFont, fontSize = 18.sp,
+                    lineHeight = 24.sp, fontWeight = FontWeight.Bold),
+                headlineMedium = typography.headlineMedium.copy(fontFamily = cardFont, fontSize = 28.sp,
+                    lineHeight = 34.sp, fontWeight = FontWeight.Bold),
+                bodyLarge = typography.bodyLarge.copy(fontFamily = cardFont, fontSize = 15.sp,
+                    lineHeight = 21.sp, fontWeight = FontWeight.Medium),
+                bodyMedium = typography.bodyMedium.copy(fontFamily = cardFont, fontSize = 15.sp,
+                    lineHeight = 21.sp, fontWeight = FontWeight.Medium),
+                labelLarge = typography.labelLarge.copy(fontFamily = cardFont, fontSize = 13.sp,
+                    lineHeight = 18.sp, fontWeight = FontWeight.SemiBold),
+                labelMedium = typography.labelMedium.copy(fontFamily = cardFont, fontSize = 13.sp,
+                    lineHeight = 18.sp, fontWeight = FontWeight.SemiBold)
+            ) else typography) {
+                androidx.compose.foundation.layout.Column(modifier = Modifier.padding(contentPadding)) {
+                    content()
+                }
             }
         }
     }

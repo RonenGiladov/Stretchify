@@ -7,25 +7,30 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateOffsetAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +51,8 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -81,6 +88,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -92,6 +103,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -108,6 +128,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import com.stretchify.data.ProgressSummary
 import com.stretchify.data.DelightPresentation
 import com.stretchify.ui.components.DelightCard
@@ -163,6 +185,7 @@ import dev.chrisbanes.haze.hazeChild
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import java.time.Instant
 import java.time.DayOfWeek
 import java.time.LocalDateTime
@@ -676,7 +699,7 @@ fun HomeScreen(
                 }
             }
         }
-        item {
+        item(key = "dashboard-grid") {
             if (uiState.dashboardCards.isEmpty())
             {
                 EmptyDashboard(onEvent)
@@ -686,6 +709,7 @@ fun HomeScreen(
                 DashboardGrid(
                     cards = uiState.dashboardCards,
                     uiState = uiState,
+                    listState = listState,
                     onSelectRoutine = { onEvent(StretchifyEvent.SelectRoutine(it)) },
                     onEvent = onEvent
                 )
@@ -751,49 +775,314 @@ private fun EmptyDashboard(onEvent: (StretchifyEvent) -> Unit)
 private fun DashboardGrid(
     cards: List<DashboardCard>,
     uiState: StretchifyUiState,
+    listState: LazyListState,
     onSelectRoutine: (String) -> Unit,
     onEvent: (StretchifyEvent) -> Unit
 )
 {
-    AnimatedContent(
-        targetState = cards,
-        transitionSpec = {
-            (fadeIn(animationSpec = tween(durationMillis = 280)) +
-                scaleIn(initialScale = 0.98f, animationSpec = tween(durationMillis = 280))) togetherWith
-                (fadeOut(animationSpec = tween(durationMillis = 180)) +
-                    scaleOut(targetScale = 0.98f, animationSpec = tween(durationMillis = 180)))
-        },
-        label = "Dashboard layout"
-    ) { displayedCards ->
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            var index = 0
-            while (index < displayedCards.size)
+    val density = LocalDensity.current
+    var displayedCards by remember(cards, uiState.isDashboardEditing) { mutableStateOf(cards) }
+    var activeDrag by remember(cards, uiState.isDashboardEditing) { mutableStateOf<DashboardCardDrag?>(null) }
+    var pressedCardId by remember(cards, uiState.isDashboardEditing) { mutableStateOf<String?>(null) }
+    val measuredHeights = remember { mutableStateMapOf<String, Int>() }
+    val displayedBounds = remember { mutableMapOf<String, Rect>() }
+    var gridOrigin by remember { mutableStateOf(Offset.Zero) }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth().onGloballyPositioned {
+        gridOrigin = it.positionInWindow()
+    }) {
+        val gridWidth = constraints.maxWidth.toFloat()
+        val gap = with(density) { 12.dp.toPx() }
+        val heightUnit = with(density) { 112.dp.toPx() }
+        val halfWidth = (gridWidth - gap) / 2f
+        val hysteresis = with(density) { 8.dp.toPx() }
+        LaunchedEffect(gridWidth, density)
+        {
+            activeDrag = null
+            pressedCardId = null
+            displayedCards = cards
+        }
+        val slots = mutableMapOf<String, Rect>()
+        var rowTop = 0f
+        var index = 0
+        while (index < displayedCards.size)
+        {
+            val card = displayedCards[index]
+            val secondCard = if (card.widthSpan == 1)
+                displayedCards.getOrNull(index + 1)?.takeIf { it.widthSpan == 1 } else null
+            val cardHeight = maxOf(heightUnit * card.heightSpan, measuredHeights[card.id]?.toFloat() ?: 0f)
+            slots[card.id] = Rect(Offset(0f, rowTop), Size(
+                if (card.widthSpan == 2) gridWidth else halfWidth, cardHeight
+            ))
+            val secondHeight = secondCard?.let {
+                maxOf(heightUnit * it.heightSpan, measuredHeights[it.id]?.toFloat() ?: 0f)
+            } ?: 0f
+            if (secondCard != null)
             {
-                val card = displayedCards[index]
-                if (card.widthSpan == 2)
+                slots[secondCard.id] = Rect(Offset(halfWidth + gap, rowTop), Size(halfWidth, secondHeight))
+            }
+            rowTop += maxOf(cardHeight, secondHeight) + gap
+            index += if (secondCard == null) 1 else 2
+        }
+
+        val updateDrag: (Offset) -> Unit = { movement ->
+            activeDrag?.let { previous ->
+                val updated = previous.copy(delta = previous.delta + movement)
+                activeDrag = updated
+                if (updated.isResizing)
                 {
-                    DashboardCardContent(card, uiState, onSelectRoutine, onEvent, Modifier.fillMaxWidth())
-                    index += 1
+                    displayedCards = displayedCards.map { card ->
+                        if (card.id != updated.card.id) card
+                        else
+                        {
+                            val width = updated.bounds.width + updated.delta.x
+                            val height = updated.card.heightSpan * heightUnit + updated.delta.y
+                            val widthBoundary = (halfWidth + gridWidth) / 2f
+                            val widthSpan = when
+                            {
+                                width > widthBoundary + hysteresis -> 2
+                                width < widthBoundary - hysteresis -> 1
+                                else -> card.widthSpan
+                            }
+                            val heightSpan = when
+                            {
+                                height > (card.heightSpan + 0.5f) * heightUnit + hysteresis ->
+                                    (height / heightUnit).roundToInt().coerceIn(1, 3)
+                                height < (card.heightSpan - 0.5f) * heightUnit - hysteresis ->
+                                    (height / heightUnit).roundToInt().coerceIn(1, 3)
+                                else -> card.heightSpan
+                            }
+                            card.copy(widthSpan = widthSpan, heightSpan = heightSpan)
+                        }
+                    }
                 }
                 else
                 {
-                    val secondCard = displayedCards.getOrNull(index + 1)?.takeIf { it.widthSpan == 1 }
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        DashboardCardContent(card, uiState, onSelectRoutine, onEvent, Modifier.weight(1f))
-                        if (secondCard != null)
+                    val currentIndex = displayedCards.indexOfFirst { it.id == updated.card.id }
+                    val currentSlot = slots.getValue(updated.card.id)
+                    val center = updated.bounds.center + updated.delta
+                    val targetIndex = displayedCards.indices.filter { candidateIndex ->
+                        val candidate = slots.getValue(displayedCards[candidateIndex].id)
+                        if (abs(candidate.top - currentSlot.top) < 1f)
                         {
-                            DashboardCardContent(secondCard, uiState, onSelectRoutine, onEvent, Modifier.weight(1f))
+                            (candidateIndex > currentIndex && center.x > candidate.center.x + hysteresis) ||
+                                (candidateIndex < currentIndex && center.x < candidate.center.x - hysteresis)
                         }
                         else
                         {
-                            Spacer(modifier = Modifier.weight(1f))
+                            (candidateIndex > currentIndex && center.y > candidate.center.y + hysteresis) ||
+                                (candidateIndex < currentIndex && center.y < candidate.center.y - hysteresis)
+                        }
+                    }.minByOrNull { candidateIndex ->
+                        (slots.getValue(displayedCards[candidateIndex].id).center - center).getDistanceSquared()
+                    }
+                    if (targetIndex != null)
+                    {
+                        displayedCards = displayedCards.toMutableList().apply {
+                            add(targetIndex, removeAt(currentIndex))
                         }
                     }
-                    index += if (secondCard == null) 1 else 2
+                }
+            }
+        }
+        val currentUpdateDrag by rememberUpdatedState(updateDrag)
+        val viewport = listState.layoutInfo
+        val gridItem = viewport.visibleItemsInfo.firstOrNull { it.key == "dashboard-grid" }
+        val edge = with(density) { 56.dp.toPx() }
+        val pointerY = activeDrag?.let { gridItem?.offset?.plus(it.pointer.y + it.delta.y) }
+        val edgeFraction = when
+        {
+            pointerY == null -> 0f
+            pointerY < viewport.viewportStartOffset + edge ->
+                ((pointerY - viewport.viewportStartOffset - edge) / edge).coerceIn(-1f, 0f)
+            pointerY > viewport.viewportEndOffset - edge ->
+                ((pointerY - viewport.viewportEndOffset + edge) / edge).coerceIn(0f, 1f)
+            else -> 0f
+        }
+        val currentEdgeFraction by rememberUpdatedState(edgeFraction)
+        LaunchedEffect(activeDrag?.card?.id, edgeFraction != 0f)
+        {
+            if (edgeFraction != 0f)
+            {
+                var previousFrame = withFrameNanos { it }
+                while (activeDrag != null)
+                {
+                    val frame = withFrameNanos { it }
+                    val elapsedSeconds = ((frame - previousFrame) / 1_000_000_000f).coerceAtMost(0.05f)
+                    previousFrame = frame
+                    val speed = with(density) { 600.dp.toPx() } * currentEdgeFraction
+                    val consumed = listState.scrollBy(speed * elapsedSeconds)
+                    if (consumed == 0f) break
+                    currentUpdateDrag(Offset(0f, consumed))
+                }
+            }
+        }
+        Box(modifier = Modifier.fillMaxWidth().height(with(density) { (rowTop - gap).coerceAtLeast(0f).toDp() })) {
+            cards.forEach { originalCard ->
+                key(originalCard.id) {
+                    val card = displayedCards.first { it.id == originalCard.id }
+                    val gesture = activeDrag?.takeIf { it.card.id == card.id }
+                    val slot = slots.getValue(card.id)
+                    val isActive = gesture != null
+                    val targetOffset = when
+                    {
+                        gesture == null -> slot.topLeft
+                        gesture.isResizing -> gesture.bounds.topLeft
+                        else -> gesture.bounds.topLeft + gesture.delta
+                    }
+                    val targetWidth = if (gesture?.isResizing == true)
+                        (gesture.bounds.width + gesture.delta.x).coerceIn(halfWidth, gridWidth) else slot.width
+                    val targetHeight = if (gesture?.isResizing == true)
+                        (gesture.bounds.height + gesture.delta.y)
+                            .coerceIn(heightUnit, maxOf(3 * heightUnit, gesture.bounds.height))
+                    else card.heightSpan * heightUnit
+                    val animatedOffset by animateOffsetAsState(
+                        targetOffset,
+                        if (isActive) snap() else spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow),
+                        label = "Dashboard card position"
+                    )
+                    val animatedWidth by animateDpAsState(
+                        with(density) { targetWidth.toDp() },
+                        if (isActive) snap() else spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow),
+                        label = "Dashboard card width"
+                    )
+                    val animatedHeight by animateDpAsState(
+                        with(density) { targetHeight.toDp() },
+                        if (isActive) snap() else spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow),
+                        label = "Dashboard card height"
+                    )
+                    val elevation by animateDpAsState(
+                        if (pressedCardId == card.id || isActive) 8.dp else 0.dp,
+                        label = "Dashboard card lift"
+                    )
+                    val startDrag: (Boolean, Offset) -> Unit = { isResizing, pointer ->
+                        displayedBounds[card.id]?.takeIf { activeDrag == null }?.let { bounds ->
+                            activeDrag = DashboardCardDrag(originalCard, bounds, pointer, isResizing = isResizing)
+                        }
+                    }
+                    val finishDrag: (Boolean) -> Unit = { isCancelled ->
+                        activeDrag?.takeIf { it.card.id == card.id }?.let { finished ->
+                            if (isCancelled)
+                            {
+                                displayedCards = cards
+                            }
+                            else if (finished.isResizing)
+                            {
+                                val resized = displayedCards.first { it.id == card.id }
+                                val widthDelta = resized.widthSpan - finished.card.widthSpan
+                                val heightDelta = resized.heightSpan - finished.card.heightSpan
+                                if (widthDelta != 0 || heightDelta != 0)
+                                    onEvent(StretchifyEvent.ResizeCard(card.id, widthDelta, heightDelta))
+                            }
+                            else
+                            {
+                                val offset = displayedCards.indexOfFirst { it.id == card.id } -
+                                    cards.indexOfFirst { it.id == card.id }
+                                if (offset != 0) onEvent(StretchifyEvent.MoveCard(card.id, offset))
+                            }
+                            activeDrag = null
+                        }
+                    }
+                    val onPress: (Boolean) -> Unit = { isPressed ->
+                        if (isPressed && activeDrag == null) pressedCardId = card.id
+                        else if (!isPressed && pressedCardId == card.id) pressedCardId = null
+                    }
+                    val dragCard: (Offset) -> Unit = { movement ->
+                        if (activeDrag?.card?.id == card.id) updateDrag(movement)
+                    }
+                    val moveModifier = createDashboardGestureModifier(
+                        card.id, uiState.isDashboardEditing, gridOrigin, onPress,
+                        { startDrag(false, it) }, dragCard, finishDrag
+                    )
+                    val resizeModifier = createDashboardGestureModifier(
+                        card.id, uiState.isDashboardEditing, gridOrigin, onPress,
+                        { startDrag(true, it) }, dragCard, finishDrag
+                    )
+                    DashboardCardContent(
+                        card, uiState, onSelectRoutine, onEvent,
+                        Modifier
+                            .offset {
+                                val position = if (isActive) targetOffset else animatedOffset
+                                IntOffset(position.x.roundToInt(), position.y.roundToInt())
+                            }
+                            .zIndex(if (isActive || pressedCardId == card.id) 1f else 0f)
+                            .width(if (isActive) with(density) { targetWidth.toDp() } else animatedWidth)
+                            .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                            .heightIn(min = if (isActive) with(density) { targetHeight.toDp() } else animatedHeight)
+                            .onSizeChanged { measuredHeights[card.id] = it.height }
+                            .onGloballyPositioned {
+                                displayedBounds[card.id] = Rect(
+                                    it.positionInWindow() - gridOrigin,
+                                    Size(it.size.width.toFloat(), it.size.height.toFloat())
+                                )
+                            }
+                            .shadow(elevation, androidx.compose.foundation.shape.RoundedCornerShape(24.dp)),
+                        moveModifier, resizeModifier, gesture?.isResizing == true
+                    )
                 }
             }
         }
     }
+}
+
+private data class DashboardCardDrag(
+    val card: DashboardCard,
+    val bounds: Rect,
+    val pointer: Offset,
+    val delta: Offset = Offset.Zero,
+    val isResizing: Boolean
+)
+
+@Composable
+private fun createDashboardGestureModifier(
+    cardId: String,
+    isEnabled: Boolean,
+    gridOrigin: Offset,
+    onPress: (Boolean) -> Unit,
+    onStart: (Offset) -> Unit,
+    onDrag: (Offset) -> Unit,
+    onFinish: (Boolean) -> Unit
+): Modifier
+{
+    val currentOnPress by rememberUpdatedState(onPress)
+    val currentOnStart by rememberUpdatedState(onStart)
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnFinish by rememberUpdatedState(onFinish)
+    val currentGridOrigin by rememberUpdatedState(gridOrigin)
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    return if (!isEnabled) Modifier else Modifier
+        .onGloballyPositioned { origin = it.positionInWindow() }
+        .pointerInput(cardId) {
+            awaitEachGesture {
+                val down = awaitFirstDown()
+                currentOnPress(true)
+                var hasStarted = false
+                try
+                {
+                    val pointer = down.position + origin - currentGridOrigin
+                    val start = awaitTouchSlopOrCancellation(down.id) { change, _ ->
+                        change.consume()
+                        hasStarted = true
+                        currentOnStart(pointer)
+                        currentOnDrag(change.position - down.position)
+                    }
+                    if (start != null)
+                    {
+                        val isCompleted = drag(start.id) { change ->
+                            currentOnDrag(change.positionChange())
+                            change.consume()
+                        }
+                        currentOnFinish(!isCompleted)
+                        hasStarted = false
+                    }
+                }
+                finally
+                {
+                    if (hasStarted) currentOnFinish(true)
+                    currentOnPress(false)
+                }
+            }
+        }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -803,7 +1092,10 @@ private fun DashboardCardContent(
     uiState: StretchifyUiState,
     onSelectRoutine: (String) -> Unit,
     onEvent: (StretchifyEvent) -> Unit,
-    modifier: Modifier
+    modifier: Modifier,
+    moveCardModifier: Modifier,
+    resizeCardModifier: Modifier,
+    isResizing: Boolean
 )
 {
     val routine = uiState.catalog.firstOrNull { it.id == card.routineId }
@@ -835,55 +1127,12 @@ private fun DashboardCardContent(
                 onLongClick = { onEvent(StretchifyEvent.OpenDashboardEditor) }
             )
     }
-    val moveCardModifier = if (uiState.isDashboardEditing)
-    {
-        Modifier.pointerInput(card.id) {
-            var dragX = 0f
-            var dragY = 0f
-            var moveOffset = 0
-            val interactionThreshold = 8.dp.toPx()
-            detectDragGestures(
-                onDragStart = {
-                    dragX = 0f
-                    dragY = 0f
-                    moveOffset = 0
-                },
-                onDragEnd = {
-                    if (moveOffset != 0)
-                    {
-                        onEvent(StretchifyEvent.MoveCard(card.id, moveOffset))
-                    }
-                },
-                onDragCancel = { moveOffset = 0 }
-            ) { change, drag ->
-                change.consume()
-                dragX += drag.x
-                dragY += drag.y
-                if (moveOffset == 0 && (abs(dragX) > interactionThreshold || abs(dragY) > interactionThreshold))
-                {
-                    moveOffset = if (abs(dragX) > abs(dragY))
-                    {
-                        if (dragX > 0f) 1 else -1
-                    }
-                    else
-                    {
-                        if (dragY > 0f) 2 else -2
-                    }
-                }
-            }
-        }
-    }
-    else
-    {
-        Modifier
-    }
     GlassCard(
         modifier = modifier
-            .animateContentSize(animationSpec = tween(durationMillis = 280))
-            .heightIn(min = (112 * card.heightSpan).dp)
             .testTag("dashboard-card-${card.id}")
             .then(cardInteractionModifier),
         contentPadding = PaddingValues(cardPadding),
+        useCardTypography = true,
         filledStyle = filledCardStyle(
             card.type == DashboardCardType.Routine || card.type == DashboardCardType.Goal,
             card.colorSeed ?: card.id.hashCode(),
@@ -926,8 +1175,10 @@ private fun DashboardCardContent(
                         )
                         LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth()
                             .testTag("goal-progress-${goal?.id}"),
-                            color = if (LocalFilledCard.current) Color.White else MaterialTheme.colorScheme.primary,
-                            trackColor = if (LocalFilledCard.current) Color.White.copy(alpha = 0.25f)
+                            color = if (LocalFilledCard.current) LocalFilledCardAccentColor.current
+                                else MaterialTheme.colorScheme.primary,
+                            trackColor = if (LocalFilledCard.current)
+                                LocalFilledCardAccentColor.current.copy(alpha = 0.25f)
                                 else MaterialTheme.colorScheme.surfaceVariant)
                     }
                 }
@@ -962,27 +1213,29 @@ private fun DashboardCardContent(
                             strokeWidth = 5.dp
                         )
                     }
-                    if (card.widthSpan == 1)
-                    {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            summary()
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Box(modifier = Modifier.align(Alignment.End)) {
-                                progressRing()
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        if (maxWidth < (260 * LocalDensity.current.fontScale).dp)
+                        {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                summary()
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Box(modifier = Modifier.align(Alignment.End)) {
+                                    progressRing()
+                                }
                             }
                         }
-                    }
-                    else
-                    {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                summary()
+                        else
+                        {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    summary()
+                                }
+                                progressRing()
                             }
-                            progressRing()
                         }
                     }
                 }
@@ -998,7 +1251,7 @@ private fun DashboardCardContent(
             enter = fadeIn(tween(220)) + expandVertically(tween(220)),
             exit = fadeOut(tween(150)) + shrinkVertically(tween(220))
         ) {
-            InlineCardEditControls(card = card, uiState = uiState, onEvent = onEvent)
+            InlineCardEditControls(card, uiState, onEvent, resizeCardModifier, isResizing)
         }
     }
 }
@@ -1007,10 +1260,11 @@ private fun DashboardCardContent(
 private fun InlineCardEditControls(
     card: DashboardCard,
     uiState: StretchifyUiState,
-    onEvent: (StretchifyEvent) -> Unit
+    onEvent: (StretchifyEvent) -> Unit,
+    resizeCardModifier: Modifier,
+    isResizing: Boolean
 )
 {
-    var isResizing by remember(card.id) { mutableStateOf(false) }
     val introductoryScale = remember(card.id) { Animatable(1f) }
     val activeScale by animateFloatAsState(
         targetValue = if (isResizing) 1.14f else 1f,
@@ -1040,7 +1294,6 @@ private fun InlineCardEditControls(
         targetValue = if (isResizing)
         {
             if (LocalFilledCard.current && LocalColorfulLight.current) Color.White
-            else if (LocalFilledCard.current) MaterialTheme.colorScheme.primary
             else MaterialTheme.colorScheme.onPrimary
         }
         else
@@ -1059,9 +1312,8 @@ private fun InlineCardEditControls(
         introductoryScale.animateTo(1f, animationSpec = tween(durationMillis = 280))
     }
 
-    Spacer(modifier = Modifier.height(10.dp))
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -1084,6 +1336,7 @@ private fun InlineCardEditControls(
         Box(
             modifier = Modifier
                 .size(48.dp)
+                .then(resizeCardModifier)
                 .graphicsLayer {
                     val scale = if (isResizing) activeScale else introductoryScale.value
                     scaleX = scale
@@ -1095,55 +1348,7 @@ private fun InlineCardEditControls(
                     contentDescription = "Drag to resize ${cardTitle(card, uiState)}"
                     stateDescription = if (isResizing) "Resizing" else "Resize handle"
                 }
-                .testTag("resize-card-${card.id}")
-                .pointerInput(card.id) {
-                    var resizeX = 0f
-                    var resizeY = 0f
-                    var widthDelta = 0
-                    var heightDelta = 0
-                    val interactionThreshold = 8.dp.toPx()
-                    detectDragGestures(
-                        onDragStart = {
-                            resizeX = 0f
-                            resizeY = 0f
-                            widthDelta = 0
-                            heightDelta = 0
-                            isResizing = true
-                        },
-                        onDragEnd = {
-                            if (widthDelta != 0 || heightDelta != 0)
-                            {
-                                onEvent(StretchifyEvent.ResizeCard(card.id, widthDelta, heightDelta))
-                            }
-                            isResizing = false
-                        },
-                        onDragCancel = {
-                            widthDelta = 0
-                            heightDelta = 0
-                            isResizing = false
-                        }
-                    ) { change, drag ->
-                        change.consume()
-                        resizeX += drag.x
-                        resizeY += drag.y
-                        if (widthDelta == 0 && heightDelta == 0 &&
-                            (abs(resizeX) > interactionThreshold || abs(resizeY) > interactionThreshold))
-                        {
-                            widthDelta = when
-                            {
-                                resizeX > interactionThreshold -> 1
-                                resizeX < -interactionThreshold -> -1
-                                else -> 0
-                            }
-                            heightDelta = when
-                            {
-                                resizeY > interactionThreshold -> 1
-                                resizeY < -interactionThreshold -> -1
-                                else -> 0
-                            }
-                        }
-                    }
-                },
+                .testTag("resize-card-${card.id}"),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -1157,19 +1362,20 @@ private fun InlineCardEditControls(
 }
 
 @Composable
-private fun SummaryCardText(eyebrow: String, title: String, body: String)
+private fun SummaryCardText(eyebrow: String, title: String, body: String, isStatistic: Boolean = false)
 {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            text = eyebrow,
+            text = eyebrow.lowercase().replaceFirstChar { it.titlecase() },
             color = if (LocalFilledCard.current) LocalFilledCardAccentColor.current
             else MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.SemiBold
         )
-        Text(text = title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(text = title, style = if (isStatistic) MaterialTheme.typography.headlineMedium
+            else MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(text = body, color = if (LocalFilledCard.current) LocalFilledCardSecondaryColor.current
-            else MaterialTheme.colorScheme.onSurfaceVariant)
+            else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -1333,6 +1539,7 @@ private fun SectionTitle(text: String)
     Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RoutineLibraryCard(
     routine: StretchRoutine,
@@ -1343,65 +1550,71 @@ private fun RoutineLibraryCard(
 {
     GlassCard(
         modifier = Modifier.testTag("library-routine-${routine.id}"),
+        useCardTypography = true,
         filledStyle = filledCardStyle(true, routine.id.hashCode(), LocalColorfulDark.current)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                "${if (routine.routineType == RoutineType.Workout) "WORKOUT" else "STRETCH"} · " +
-                    routine.category.uppercase(),
+                "${if (routine.routineType == RoutineType.Workout) "Workout" else "Stretch"} · " +
+                    routine.category,
                 color = if (LocalFilledCard.current) LocalFilledCardAccentColor.current
                 else MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.SemiBold
             )
             Text(routine.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(routine.goal, color = if (LocalFilledCard.current) LocalFilledCardSecondaryColor.current
-                else MaterialTheme.colorScheme.onSurfaceVariant)
+                else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             Text(
                 "${routine.estimatedDurationSeconds / 60} min · ${routine.difficulty} · " +
                     routine.targetAreas.joinToString(),
                 style = MaterialTheme.typography.labelMedium
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedButton(
-                    onClick = onOpen,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (LocalFilledCard.current) LocalFilledCardAccentColor.current
-                        else MaterialTheme.colorScheme.primary
-                    ),
-                    border = if (LocalFilledCard.current)
-                        BorderStroke(1.dp, LocalFilledCardAccentColor.current.copy(alpha = 0.72f))
-                    else ButtonDefaults.outlinedButtonBorder(enabled = true)
-                ) {
-                    Text("View")
-                }
-                Button(
-                    onClick = onAdd,
-                    enabled = !isOnHome,
-                    border = if (LocalFilledCard.current)
-                        BorderStroke(1.dp, LocalFilledCardAccentColor.current.copy(alpha = 0.72f))
-                    else null,
-                    colors = ButtonDefaults.buttonColors(
-                        disabledContainerColor = if (LocalFilledCard.current)
-                            LocalFilledCardAccentColor.current.copy(alpha = 0.12f)
-                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                        disabledContentColor = if (LocalFilledCard.current)
-                            LocalFilledCardAccentColor.current.copy(alpha = 0.60f)
-                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                    ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("add-home-${routine.id}")
-                ) {
-                    FilledButtonText(if (isOnHome) "On Home" else "Add to Home")
+            BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    maxItemsInEachRow = if (maxWidth < (280 * LocalDensity.current.fontScale).dp) 1 else 2) {
+                    OutlinedButton(
+                        onClick = onOpen,
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (LocalFilledCard.current) LocalFilledCardAccentColor.current
+                            else MaterialTheme.colorScheme.primary
+                        ),
+                        border = if (LocalFilledCard.current)
+                            BorderStroke(1.dp, LocalFilledCardAccentColor.current.copy(alpha = 0.72f))
+                        else ButtonDefaults.outlinedButtonBorder(enabled = true)
+                    ) {
+                        Text("View")
+                    }
+                    Button(
+                        onClick = onAdd,
+                        enabled = !isOnHome,
+                        border = if (LocalFilledCard.current)
+                            BorderStroke(1.dp, LocalFilledCardAccentColor.current.copy(alpha = 0.72f))
+                        else null,
+                        colors = ButtonDefaults.buttonColors(
+                            disabledContainerColor = if (LocalFilledCard.current)
+                                LocalFilledCardAccentColor.current.copy(alpha = 0.12f)
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                            disabledContentColor = if (LocalFilledCard.current)
+                                LocalFilledCardAccentColor.current.copy(alpha = 0.60f)
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .testTag("add-home-${routine.id}")
+                    ) {
+                        FilledButtonText(if (isOnHome) "On Home" else "Add to Home")
+                    }
                 }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ProgressScreen(
     uiState: StretchifyUiState,
@@ -1467,8 +1680,8 @@ private fun ProgressScreen(
         else
         {
             item {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically) {
+                FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     SectionTitle("Recent sessions")
                     Button(onClick = { onEvent(StretchifyEvent.OpenHistoryEditor()) },
                         modifier = Modifier.pulseOnFirstVisible()) { FilledButtonText("Add session") }
@@ -1484,28 +1697,55 @@ private fun ProgressScreen(
                         selectedRecordId = record.id
                     }
                     .testTag("history-${record.id}"),
+                    useCardTypography = true,
                     filledStyle = filledCardStyle(false, record.id.hashCode(), LocalColorfulDark.current)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                record.routineTitle ?: routine?.title ?:
-                                    if (isWorkout) "Workout session" else "Stretch session",
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text("${record.completedStepCount} ${if (isWorkout) "exercises" else "stretches"}")
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val shouldStack = maxWidth < (260 * LocalDensity.current.fontScale).dp
+                        val metadataWidth = maxWidth * 0.38f
+                        val details: @Composable () -> Unit = {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    record.routineTitle ?: routine?.title ?:
+                                        if (isWorkout) "Workout session" else "Stretch session",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text("${record.completedStepCount} ${if (isWorkout) "exercises" else "stretches"}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (LocalFilledCard.current) LocalFilledCardSecondaryColor.current
+                                        else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("${record.elapsedSeconds / 60} min", color =
-                                if (LocalFilledCard.current) LocalFilledCardAccentColor.current
-                                else MaterialTheme.colorScheme.primary)
-                            Text(
-                                Instant.ofEpochMilli(record.completedAtMillis)
-                                    .atZone(ZoneId.systemDefault())
-                                    .format(DateTimeFormatter.ofPattern("d MMM yyyy")),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (LocalFilledCard.current) LocalFilledCardSecondaryColor.current
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        val metadata: @Composable () -> Unit = {
+                            Column(horizontalAlignment = if (shouldStack) Alignment.Start else Alignment.End,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("${record.elapsedSeconds / 60} min", style = MaterialTheme.typography.labelMedium,
+                                    color =
+                                    if (LocalFilledCard.current) LocalFilledCardAccentColor.current
+                                    else MaterialTheme.colorScheme.primary)
+                                Text(
+                                    Instant.ofEpochMilli(record.completedAtMillis)
+                                        .atZone(ZoneId.systemDefault())
+                                        .format(DateTimeFormatter.ofPattern("d MMM yyyy")),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (LocalFilledCard.current) LocalFilledCardSecondaryColor.current
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        if (shouldStack)
+                        {
+                            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                details()
+                                metadata()
+                            }
+                        }
+                        else
+                        {
+                            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                Box(Modifier.weight(1f)) { details() }
+                                Box(Modifier.widthIn(max = metadataWidth)) { metadata() }
+                            }
                         }
                     }
                 }
@@ -1579,21 +1819,27 @@ private fun ProgressScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ProgressCards(summary: ProgressSummary)
 {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        GlassCard(modifier = Modifier.weight(1f), contentPadding = PaddingValues(14.dp),
-            filledStyle = filledCardStyle(false, "progress-streak".hashCode(), LocalColorfulDark.current)) {
-            SummaryCardText("STREAK", "${summary.currentStreak}", "days")
-        }
-        GlassCard(modifier = Modifier.weight(1f), contentPadding = PaddingValues(14.dp),
-            filledStyle = filledCardStyle(false, "progress-week".hashCode(), LocalColorfulDark.current)) {
-            SummaryCardText("THIS WEEK", "${summary.weeklySessions}", "sessions")
-        }
-        GlassCard(modifier = Modifier.weight(1f), contentPadding = PaddingValues(14.dp),
-            filledStyle = filledCardStyle(false, "progress-total".hashCode(), LocalColorfulDark.current)) {
-            SummaryCardText("TOTAL", "${summary.totalMinutes}", "minutes")
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = ((maxWidth.value + 12f) / (112f * LocalDensity.current.fontScale + 12f))
+            .toInt().coerceIn(1, 3)
+        FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp), maxItemsInEachRow = columns) {
+            GlassCard(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), useCardTypography = true,
+                filledStyle = filledCardStyle(false, "progress-streak".hashCode(), LocalColorfulDark.current)) {
+                SummaryCardText("Streak", "${summary.currentStreak}", "days", isStatistic = true)
+            }
+            GlassCard(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), useCardTypography = true,
+                filledStyle = filledCardStyle(false, "progress-week".hashCode(), LocalColorfulDark.current)) {
+                SummaryCardText("This week", "${summary.weeklySessions}", "sessions", isStatistic = true)
+            }
+            GlassCard(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), useCardTypography = true,
+                filledStyle = filledCardStyle(false, "progress-total".hashCode(), LocalColorfulDark.current)) {
+                SummaryCardText("Total", "${summary.totalMinutes}", "minutes", isStatistic = true)
+            }
         }
     }
 }
