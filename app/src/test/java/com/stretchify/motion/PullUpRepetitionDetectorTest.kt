@@ -62,6 +62,29 @@ class PullUpRepetitionDetectorTest
         assertEquals(1, events.count { it is RepetitionDetectionEvent.CalibrationComplete })
     }
 
+    @Test
+    fun moderateHeightPracticeRepetitionsCreateReachableCalibration()
+    {
+        val detector = PullUpRepetitionDetector(null)
+        val samples = SampleBuilder()
+        val events = mutableListOf<RepetitionDetectionEvent>()
+
+        events += samples.still(detector)
+        repeat(3)
+        {
+            events += samples.ascend(detector, 0.14f, 0.35f)
+            events += samples.descend(detector, 0.14f, -0.35f)
+            events += samples.still(detector)
+        }
+
+        val profile = events.filterIsInstance<RepetitionDetectionEvent.CalibrationComplete>()
+            .single()
+            .profile
+        assertEquals(listOf(1, 2, 3), events.filterIsInstance<RepetitionDetectionEvent.CalibrationProgress>()
+            .map { it.completedRepetitions })
+        assertTrue(profile.topExcursionMeters < 0.14f)
+    }
+
     private fun profile(): PullUpCalibrationProfile
     {
         return PullUpCalibrationProfile(
@@ -82,9 +105,13 @@ class PullUpRepetitionDetectorTest
             return feed(detector, 120, 0f) { 0f }
         }
 
-        fun ascend(detector: RepetitionDetector, topMeters: Float): List<RepetitionDetectionEvent>
+        fun ascend(
+            detector: RepetitionDetector,
+            topMeters: Float,
+            acceleration: Float = 1.1f
+        ): List<RepetitionDetectionEvent>
         {
-            return feed(detector, 40, 1.1f) { index -> topMeters * (index + 1) / 40f }
+            return feed(detector, 40, acceleration) { index -> topMeters * (index + 1) / 40f }
         }
 
         fun hold(detector: RepetitionDetector, heightMeters: Float): List<RepetitionDetectionEvent>
@@ -102,9 +129,13 @@ class PullUpRepetitionDetectorTest
             return feed(detector, 20, -0.8f) { index -> 0.1f * (1f - (index + 1) / 20f) }
         }
 
-        fun descend(detector: RepetitionDetector, topMeters: Float): List<RepetitionDetectionEvent>
+        fun descend(
+            detector: RepetitionDetector,
+            topMeters: Float,
+            acceleration: Float = -1.1f
+        ): List<RepetitionDetectionEvent>
         {
-            return feed(detector, 50, -1.1f) { index -> topMeters * (1f - (index + 1) / 50f) }
+            return feed(detector, 50, acceleration) { index -> topMeters * (1f - (index + 1) / 50f) }
         }
 
         private fun feed(

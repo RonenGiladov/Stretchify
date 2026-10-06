@@ -236,7 +236,7 @@ class PullUpRepetitionDetector(
     companion object
     {
         const val REQUIRED_CALIBRATION_REPETITIONS = 3
-        const val PROFILE_VERSION = 1
+        const val PROFILE_VERSION = 2
 
         private const val NANOS_PER_SECOND = 1_000_000_000f
         private const val NANOS_PER_MILLISECOND = 1_000_000L
@@ -248,14 +248,14 @@ class PullUpRepetitionDetector(
         private const val MAX_DISPLACEMENT = 1.2f
         private const val STABLE_ACCELERATION = 0.32f
         private const val STABLE_VELOCITY = 0.1f
-        private const val ASCENT_ACCELERATION = 0.45f
-        private const val ASCENT_VELOCITY = 0.04f
+        private const val ASCENT_ACCELERATION = 0.3f
+        private const val ASCENT_VELOCITY = 0.025f
         private const val DESCENT_VELOCITY = 0.08f
-        private const val CALIBRATION_TOP_EXCURSION = 0.18f
-        private const val MIN_TOP_EXCURSION = 0.16f
+        private const val CALIBRATION_TOP_EXCURSION = 0.12f
+        private const val MIN_TOP_EXCURSION = 0.1f
         private const val MAX_TOP_EXCURSION = 0.65f
         private const val MIN_BOTTOM_EXCURSION = 0.04f
-        private const val TOP_EXCURSION_RATIO = 0.9f
+        private const val TOP_EXCURSION_RATIO = 0.8f
         private const val BOTTOM_EXCURSION_RATIO = 0.25f
         private const val DESCENT_EXCURSION_RATIO = 0.65f
         private const val MAX_CALIBRATION_EXCURSION_SPREAD = 0.45f

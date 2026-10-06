@@ -56,22 +56,28 @@ class AndroidMotionSensorSource(context: Context)
                             latestRotationRate
                         )
                     )
-                    Sensor.TYPE_ACCELEROMETER -> if (linearAcceleration == null)
+                    Sensor.TYPE_ACCELEROMETER ->
                     {
-                        updateGravityFromAccelerometer(event.values)
-                        val adjustedAcceleration = floatArrayOf(
-                            event.values[0] - gravity[0],
-                            event.values[1] - gravity[1],
-                            event.values[2] - gravity[2]
-                        )
-                        onSample(
-                            MotionSample(
-                                event.timestamp,
-                                projectOntoGravity(adjustedAcceleration),
-                                latestPressureAltitude,
-                                latestRotationRate
+                        if (gravitySensor == null)
+                        {
+                            updateGravityFromAccelerometer(event.values)
+                        }
+                        if (linearAcceleration == null)
+                        {
+                            val adjustedAcceleration = floatArrayOf(
+                                event.values[0] - gravity[0],
+                                event.values[1] - gravity[1],
+                                event.values[2] - gravity[2]
                             )
-                        )
+                            onSample(
+                                MotionSample(
+                                    event.timestamp,
+                                    projectOntoGravity(adjustedAcceleration),
+                                    latestPressureAltitude,
+                                    latestRotationRate
+                                )
+                            )
+                        }
                     }
                 }
             }
@@ -82,6 +88,10 @@ class AndroidMotionSensorSource(context: Context)
         gravitySensor?.let { sensorManager.registerListener(eventListener, it, SENSOR_PERIOD_MICROS, handler) }
         gyroscope?.let { sensorManager.registerListener(eventListener, it, SENSOR_PERIOD_MICROS, handler) }
         pressureSensor?.let { sensorManager.registerListener(eventListener, it, SENSOR_PERIOD_MICROS, handler) }
+        if (gravitySensor == null && linearAcceleration != null)
+        {
+            sensorManager.registerListener(eventListener, accelerometer, SENSOR_PERIOD_MICROS, handler)
+        }
         val motionSensor = linearAcceleration ?: accelerometer
         return sensorManager.registerListener(eventListener, motionSensor, SENSOR_PERIOD_MICROS, handler)
     }
@@ -124,6 +134,6 @@ class AndroidMotionSensorSource(context: Context)
     {
         private const val THREAD_NAME = "StretchifyMotionSensors"
         private const val SENSOR_PERIOD_MICROS = 20_000
-        private const val GRAVITY_FILTER_ALPHA = 0.92f
+        private const val GRAVITY_FILTER_ALPHA = 0.98f
     }
 }
