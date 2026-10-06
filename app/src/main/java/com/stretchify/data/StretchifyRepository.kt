@@ -2,12 +2,18 @@ package com.stretchify.data
 
 import android.content.Context
 import com.stretchify.model.CompletionRecord
+import com.stretchify.model.ActiveRepetitionSession
 import com.stretchify.model.AlertMode
 import com.stretchify.model.AlertTiming
 import com.stretchify.model.DashboardCard
 import com.stretchify.model.DashboardCardType
 import com.stretchify.model.RoutineStep
+import com.stretchify.model.RoutineStepGoal
 import com.stretchify.model.RoutineType
+import com.stretchify.model.RepetitionDetectorType
+import com.stretchify.model.RepCountSource
+import com.stretchify.model.RepFeedbackMode
+import com.stretchify.model.StepResult
 import com.stretchify.model.Stretch
 import com.stretchify.model.StretchRoutine
 import com.stretchify.model.LiquidPreset
@@ -15,6 +21,8 @@ import com.stretchify.model.GlassFinish
 import com.stretchify.model.GoalRevision
 import com.stretchify.model.GoalRoutine
 import com.stretchify.model.ThemePreference
+import com.stretchify.motion.PullUpCalibrationProfile
+import com.stretchify.motion.PullUpRepetitionDetector
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.ZoneId
@@ -324,8 +332,7 @@ class StretchifyRepository(context: Context)
         routines.forEach { routine ->
             val stepsJson = JSONArray()
             routine.steps.forEach { step ->
-                stepsJson.put(
-                    JSONObject()
+                val stepJson = JSONObject()
                         .put("stretchId", step.stretch.id)
                         .put("stretchName", step.stretch.name)
                         .put("stretchDescription", step.stretch.description)
@@ -333,7 +340,15 @@ class StretchifyRepository(context: Context)
                         .put("easierDescription", step.stretch.easierDescription ?: "")
                         .put("durationSeconds", step.durationSeconds)
                         .put("restSeconds", step.restSeconds)
-                )
+                when (val goal = step.goal)
+                {
+                    is RoutineStepGoal.Timed -> stepJson.put("goalType", "Timed")
+                    is RoutineStepGoal.SensorRepetitions -> stepJson
+                        .put("goalType", "SensorRepetitions")
+                        .put("detector", goal.detector.name)
+                        .put("targetRepetitions", goal.targetRepetitions ?: JSONObject.NULL)
+                }
+                stepsJson.put(stepJson)
             }
             jsonArray.put(
                 JSONObject()
@@ -353,6 +368,21 @@ class StretchifyRepository(context: Context)
 
     private fun createCustomRoutineStep(routineJson: JSONObject, stepJson: JSONObject): RoutineStep
     {
+        val durationSeconds = stepJson.optInt("durationSeconds", 0)
+        val goal = if (stepJson.optString("goalType") == "SensorRepetitions")
+        {
+            val detector = RepetitionDetectorType.entries.firstOrNull {
+                it.name == stepJson.optString("detector")
+            } ?: RepetitionDetectorType.PullUp
+            RoutineStepGoal.SensorRepetitions(
+                detector,
+                if (stepJson.isNull("targetRepetitions")) null else stepJson.optInt("targetRepetitions")
+            )
+        }
+        else
+        {
+            RoutineStepGoal.Timed(durationSeconds)
+        }
         return RoutineStep(
             stretch = Stretch(
                 id = stepJson.getString("stretchId"),
@@ -364,8 +394,9 @@ class StretchifyRepository(context: Context)
                 ),
                 easierDescription = stepJson.optString("easierDescription").ifBlank { null }
             ),
-            durationSeconds = stepJson.getInt("durationSeconds"),
-            restSeconds = stepJson.optInt("restSeconds", 0)
+            durationSeconds = durationSeconds,
+            restSeconds = stepJson.optInt("restSeconds", 0),
+            goal = goal
         )
     }
 
@@ -497,7 +528,8 @@ class StretchifyRepository(context: Context)
                             routineTitle = item.optString("routineTitle").ifBlank { null },
                             routineType = RoutineType.entries.firstOrNull {
                                 it.name == item.optString("routineType")
-                            } ?: RoutineType.Stretch
+                            } ?: RoutineType.Stretch,
+                            stepResults = loadStepResults(item.optJSONArray("stepResults"))
                         )
                     )
                 }
@@ -513,6 +545,16 @@ class StretchifyRepository(context: Context)
     {
         val jsonArray = JSONArray()
         records.distinctBy { it.id }.forEach { record ->
+            val stepResults = JSONArray()
+            record.stepResults.forEach { result ->
+                stepResults.put(
+                    JSONObject()
+                        .put("stepId", result.stepId)
+                        .put("elapsedSeconds", result.elapsedSeconds)
+                        .put("repetitionCount", result.repetitionCount ?: JSONObject.NULL)
+                        .put("repCountSource", result.repCountSource?.name ?: "")
+                )
+            }
             jsonArray.put(
                 JSONObject()
                     .put("id", record.id)
@@ -522,9 +564,137 @@ class StretchifyRepository(context: Context)
                     .put("completedStepCount", record.completedStepCount)
                     .put("routineTitle", record.routineTitle ?: "")
                     .put("routineType", record.routineType.name)
+                    .put("stepResults", stepResults)
             )
         }
         preferences.edit().putString(COMPLETIONS_KEY, jsonArray.toString()).apply()
+    }
+
+    private fun loadStepResults(items: JSONArray?): List<StepResult>
+    {
+        if (items == null)
+        {
+            return emptyList()
+        }
+        return buildList {
+            for (index in 0 until items.length())
+            {
+                val item = items.getJSONObject(index)
+                add(
+                    StepResult(
+                        stepId = item.getString("stepId"),
+                        elapsedSeconds = item.optInt("elapsedSeconds", 0),
+                        repetitionCount = if (item.isNull("repetitionCount"))
+                        {
+                            null
+                        }
+                        else
+                        {
+                            item.getInt("repetitionCount")
+                        },
+                        repCountSource = RepCountSource.entries.firstOrNull {
+                            it.name == item.optString("repCountSource")
+                        }
+                    )
+                )
+            }
+        }
+    }
+
+    fun loadRepFeedbackMode(): RepFeedbackMode
+    {
+        return RepFeedbackMode.entries.firstOrNull {
+            it.name == preferences.getString(REP_FEEDBACK_MODE_KEY, RepFeedbackMode.VibrationOnly.name)
+        } ?: RepFeedbackMode.VibrationOnly
+    }
+
+    fun saveRepFeedbackMode(repFeedbackMode: RepFeedbackMode)
+    {
+        preferences.edit().putString(REP_FEEDBACK_MODE_KEY, repFeedbackMode.name).apply()
+    }
+
+    fun loadPullUpCalibrationProfile(): PullUpCalibrationProfile?
+    {
+        val storedValue = preferences.getString(PULL_UP_CALIBRATION_KEY, null) ?: return null
+        return try
+        {
+            val item = JSONObject(storedValue)
+            PullUpCalibrationProfile(
+                version = item.getInt("version"),
+                topExcursionMeters = item.getDouble("topExcursionMeters").toFloat(),
+                bottomExcursionMeters = item.getDouble("bottomExcursionMeters").toFloat(),
+                medianRepDurationMillis = item.getLong("medianRepDurationMillis"),
+                createdAtMillis = item.getLong("createdAtMillis")
+            ).takeIf { profile ->
+                profile.version == PullUpRepetitionDetector.PROFILE_VERSION &&
+                    profile.topExcursionMeters > 0f &&
+                    profile.bottomExcursionMeters in 0f..profile.topExcursionMeters &&
+                    profile.medianRepDurationMillis > 0L
+            }
+        }
+        catch (_: Exception)
+        {
+            null
+        }
+    }
+
+    fun savePullUpCalibrationProfile(profile: PullUpCalibrationProfile)
+    {
+        val item = JSONObject()
+            .put("version", profile.version)
+            .put("topExcursionMeters", profile.topExcursionMeters.toDouble())
+            .put("bottomExcursionMeters", profile.bottomExcursionMeters.toDouble())
+            .put("medianRepDurationMillis", profile.medianRepDurationMillis)
+            .put("createdAtMillis", profile.createdAtMillis)
+        preferences.edit().putString(PULL_UP_CALIBRATION_KEY, item.toString()).apply()
+    }
+
+    fun clearPullUpCalibrationProfile()
+    {
+        preferences.edit().remove(PULL_UP_CALIBRATION_KEY).apply()
+    }
+
+    fun loadActiveRepetitionSession(): ActiveRepetitionSession?
+    {
+        val storedValue = preferences.getString(ACTIVE_REPETITION_SESSION_KEY, null) ?: return null
+        return try
+        {
+            val item = JSONObject(storedValue)
+            ActiveRepetitionSession(
+                sessionId = item.getString("sessionId"),
+                routineId = item.getString("routineId"),
+                repetitionCount = item.getInt("repetitionCount"),
+                elapsedSeconds = item.getInt("elapsedSeconds"),
+                isManualCounting = item.getBoolean("isManualCounting"),
+                isPaused = item.getBoolean("isPaused"),
+                startedAtMillis = item.getLong("startedAtMillis")
+            ).takeIf { session ->
+                session.sessionId.isNotBlank() && session.routineId.isNotBlank() &&
+                    session.repetitionCount >= 0 && session.elapsedSeconds >= 0
+            }
+        }
+        catch (_: Exception)
+        {
+            null
+        }
+    }
+
+    fun saveActiveRepetitionSession(session: ActiveRepetitionSession)
+    {
+        val item = JSONObject()
+            .put("sessionId", session.sessionId)
+            .put("routineId", session.routineId)
+            .put("repetitionCount", session.repetitionCount)
+            .put("elapsedSeconds", session.elapsedSeconds)
+            .put("isManualCounting", session.isManualCounting)
+            .put("isPaused", session.isPaused)
+            .put("startedAtMillis", session.startedAtMillis)
+        preferences.edit().putString(ACTIVE_REPETITION_SESSION_KEY, item.toString()).commit()
+    }
+
+    fun clearActiveRepetitionSession()
+    {
+        preferences.edit().remove(ACTIVE_REPETITION_SESSION_KEY).commit()
     }
 
     companion object
@@ -552,6 +722,9 @@ class StretchifyRepository(context: Context)
         const val COUNTDOWN_SECONDS_KEY = "countdown_seconds"
         const val REMINDERS_ENABLED_KEY = "reminders_enabled"
         const val REMINDER_HOUR_KEY = "reminder_hour"
+        const val REP_FEEDBACK_MODE_KEY = "rep_feedback_mode"
+        const val PULL_UP_CALIBRATION_KEY = "pull_up_calibration"
+        const val ACTIVE_REPETITION_SESSION_KEY = "active_repetition_session"
         const val DEFAULT_REMINDER_HOUR = 18
         const val DEFAULT_COUNTDOWN_SECONDS = 5
         val COUNTDOWN_OPTIONS = setOf(0, 3, 5, 10, 15)

@@ -11,8 +11,32 @@ data class Stretch(
 data class RoutineStep(
     val stretch: Stretch,
     val durationSeconds: Int,
-    val restSeconds: Int
+    val restSeconds: Int,
+    val goal: RoutineStepGoal = RoutineStepGoal.Timed(durationSeconds)
 )
+{
+    val effectiveGoal: RoutineStepGoal
+        get() = when (goal)
+        {
+            is RoutineStepGoal.Timed -> RoutineStepGoal.Timed(durationSeconds)
+            is RoutineStepGoal.SensorRepetitions -> goal
+        }
+}
+
+sealed interface RoutineStepGoal
+{
+    data class Timed(val durationSeconds: Int) : RoutineStepGoal
+
+    data class SensorRepetitions(
+        val detector: RepetitionDetectorType,
+        val targetRepetitions: Int? = null
+    ) : RoutineStepGoal
+}
+
+enum class RepetitionDetectorType
+{
+    PullUp
+}
 
 data class StretchRoutine(
     val id: String,
@@ -27,7 +51,10 @@ data class StretchRoutine(
 )
 {
     val estimatedDurationSeconds: Int
-        get() = steps.sumOf { step -> step.durationSeconds + step.restSeconds }
+        get() = steps.sumOf { step ->
+            val durationSeconds = (step.effectiveGoal as? RoutineStepGoal.Timed)?.durationSeconds ?: 0
+            durationSeconds + step.restSeconds
+        }
 }
 
 enum class RoutineType
@@ -81,6 +108,35 @@ enum class AlertTiming
     StretchAndFinish
 }
 
+enum class RepFeedbackMode
+{
+    VibrationOnly,
+    SoundAndVibration
+}
+
+enum class RepCountSource
+{
+    Automatic,
+    Manual
+}
+
+data class StepResult(
+    val stepId: String,
+    val elapsedSeconds: Int,
+    val repetitionCount: Int? = null,
+    val repCountSource: RepCountSource? = null
+)
+
+data class ActiveRepetitionSession(
+    val sessionId: String,
+    val routineId: String,
+    val repetitionCount: Int,
+    val elapsedSeconds: Int,
+    val isManualCounting: Boolean,
+    val isPaused: Boolean,
+    val startedAtMillis: Long
+)
+
 data class CompletionRecord(
     val id: String,
     val routineId: String,
@@ -88,7 +144,8 @@ data class CompletionRecord(
     val elapsedSeconds: Int,
     val completedStepCount: Int,
     val routineTitle: String? = null,
-    val routineType: RoutineType = RoutineType.Stretch
+    val routineType: RoutineType = RoutineType.Stretch,
+    val stepResults: List<StepResult> = emptyList()
 )
 
 data class GoalRevision(

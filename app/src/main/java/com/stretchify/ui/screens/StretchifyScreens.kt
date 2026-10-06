@@ -120,6 +120,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.stateDescription
@@ -151,6 +153,8 @@ import com.stretchify.model.AlertTiming
 import com.stretchify.model.DashboardCardType
 import com.stretchify.model.StretchRoutine
 import com.stretchify.model.RoutineType
+import com.stretchify.model.RoutineStepGoal
+import com.stretchify.model.RepFeedbackMode
 import com.stretchify.model.GoalRoutine
 import com.stretchify.model.LiquidPreset
 import com.stretchify.model.GlassFinish
@@ -163,6 +167,7 @@ import com.stretchify.ui.components.liquidSurface
 import androidx.activity.compose.BackHandler
 import com.stretchify.session.SessionPhase
 import com.stretchify.session.SessionState
+import com.stretchify.session.RepetitionTrackingStatus
 import com.stretchify.ui.StretchifyEvent
 import com.stretchify.ui.StretchifyUiState
 import com.stretchify.ui.TopLevelDestination
@@ -741,7 +746,14 @@ fun HomeScreen(
                     fontWeight = FontWeight.Bold)
                 Text(lastCompletedRoutine.goal, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
-                    "${lastCompletedRoutine.estimatedDurationSeconds / 60} min · " +
+                    (if (lastCompletedRoutine.steps.any { it.goal is RoutineStepGoal.SensorRepetitions })
+                    {
+                        "Untimed"
+                    }
+                    else
+                    {
+                        "${lastCompletedRoutine.estimatedDurationSeconds / 60} min"
+                    }) + " · " +
                         "${lastCompletedRoutine.difficulty} · ${lastCompletedRoutine.targetAreas.joinToString()}"
                 )
                 Button(
@@ -1166,7 +1178,12 @@ private fun DashboardCardContent(
                             it.category.uppercase()
                     } ?: "ROUTINE",
                     title = routine?.title ?: "Routine unavailable",
-                    body = routine?.let { "${it.estimatedDurationSeconds / 60} min · ${it.difficulty}" } ?: ""
+                    body = routine?.let {
+                        val durationLabel = if (it.steps.any { step ->
+                                step.goal is RoutineStepGoal.SensorRepetitions
+                            }) "Untimed" else "${it.estimatedDurationSeconds / 60} min"
+                        "$durationLabel · ${it.difficulty}"
+                    } ?: ""
                 )
                 DashboardCardType.Goal ->
                 {
@@ -1578,7 +1595,14 @@ private fun RoutineLibraryCard(
             Text(routine.goal, color = if (LocalFilledCard.current) LocalFilledCardSecondaryColor.current
                 else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             Text(
-                "${routine.estimatedDurationSeconds / 60} min · ${routine.difficulty} · " +
+                (if (routine.steps.any { it.goal is RoutineStepGoal.SensorRepetitions })
+                {
+                    "Untimed"
+                }
+                else
+                {
+                    "${routine.estimatedDurationSeconds / 60} min"
+                }) + " · ${routine.difficulty} · " +
                     routine.targetAreas.joinToString(),
                 style = MaterialTheme.typography.labelMedium
             )
@@ -1703,6 +1727,8 @@ private fun ProgressScreen(
                 val record = summary.recentRecords[index]
                 val routine = uiState.catalog.firstOrNull { it.id == record.routineId }
                 val isWorkout = record.routineType == RoutineType.Workout
+                val repetitionCount = record.stepResults.sumOf { it.repetitionCount ?: 0 }
+                val hasRepetitionCount = record.stepResults.any { it.repetitionCount != null }
                 GlassCard(modifier = Modifier
                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
                     .clickable {
@@ -1727,7 +1753,14 @@ private fun ProgressScreen(
                                     fontWeight = FontWeight.Bold,
                                     style = MaterialTheme.typography.titleMedium
                                 )
-                                Text("${record.completedStepCount} ${if (isWorkout) "exercises" else "stretches"}",
+                                Text(if (hasRepetitionCount)
+                                {
+                                    "$repetitionCount pull-up ${if (repetitionCount == 1) "rep" else "reps"}"
+                                }
+                                else
+                                {
+                                    "${record.completedStepCount} ${if (isWorkout) "exercises" else "stretches"}"
+                                },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = if (LocalFilledCard.current) LocalFilledCardSecondaryColor.current
                                         else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1773,6 +1806,8 @@ private fun ProgressScreen(
     {
         val routine = uiState.catalog.firstOrNull { it.id == selectedRecord.routineId }
         val isWorkout = selectedRecord.routineType == RoutineType.Workout
+        val repetitionCount = selectedRecord.stepResults.sumOf { it.repetitionCount ?: 0 }
+        val hasRepetitionCount = selectedRecord.stepResults.any { it.repetitionCount != null }
         ModalBottomSheet(
             onDismissRequest = { selectedRecordId = null },
             modifier = Modifier.testTag("session-actions-sheet"),
@@ -1799,8 +1834,16 @@ private fun ProgressScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    "${selectedRecord.elapsedSeconds / 60} min · ${selectedRecord.completedStepCount} " +
-                        if (isWorkout) "exercises" else "stretches"
+                    if (hasRepetitionCount)
+                    {
+                        "${selectedRecord.elapsedSeconds / 60} min · $repetitionCount " +
+                            if (repetitionCount == 1) "rep" else "reps"
+                    }
+                    else
+                    {
+                        "${selectedRecord.elapsedSeconds / 60} min · ${selectedRecord.completedStepCount} " +
+                            if (isWorkout) "exercises" else "stretches"
+                    }
                 )
                 Button(
                     onClick = {
@@ -1869,10 +1912,13 @@ fun RoutinePreviewScreen(
     routine: StretchRoutine,
     onStartSession: () -> Unit,
     onBack: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    isPullUpCalibrated: Boolean = false,
+    onRecalibratePullUps: () -> Unit = { }
 )
 {
     val isWorkout = routine.routineType == RoutineType.Workout
+    val repetitionGoal = routine.steps.singleOrNull()?.goal as? RoutineStepGoal.SensorRepetitions
     val stepLabel = if (isWorkout) "exercise" else "stretch"
     FocusedScreen {
         BackHeader("Routine details", onBack)
@@ -1880,7 +1926,8 @@ fun RoutinePreviewScreen(
         Text(routine.goal, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.76f))
         GlassCard {
             Text(
-                "${routine.estimatedDurationSeconds / 60} min · ${routine.difficulty} · " +
+                (if (repetitionGoal == null) "${routine.estimatedDurationSeconds / 60} min" else "Untimed") +
+                    " · ${routine.difficulty} · " +
                     routine.targetAreas.joinToString(),
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold
@@ -1900,7 +1947,12 @@ fun RoutinePreviewScreen(
             }
         }
         TrainerMessageBubble(
-            if (isWorkout)
+            if (repetitionGoal != null)
+            {
+                "Secure your phone in a snug front pocket. I’ll learn your full pull-up motion, then count " +
+                    "each time you reach that top position. All motion processing stays on this phone."
+            }
+            else if (isWorkout)
             {
                 "I'll guide each exercise and rest. Keep a controlled pace and use the easier option when needed."
             }
@@ -1915,8 +1967,17 @@ fun RoutinePreviewScreen(
                     Text("${index + 1}. ${step.stretch.name}", style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold)
                     Text(step.stretch.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("${step.durationSeconds}s $stepLabel · ${step.restSeconds}s rest",
-                        color = MaterialTheme.colorScheme.primary)
+                    Text(
+                        if (step.goal is RoutineStepGoal.SensorRepetitions)
+                        {
+                            "Automatic rep counting · Finish when you’re done"
+                        }
+                        else
+                        {
+                            "${step.durationSeconds}s $stepLabel · ${step.restSeconds}s rest"
+                        },
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }
@@ -1928,10 +1989,23 @@ fun RoutinePreviewScreen(
                 .pulseOnFirstVisible()
                 .testTag("start-session-button")
         ) {
-            FilledButtonText("Start routine")
+            FilledButtonText(if (repetitionGoal != null && !isPullUpCalibrated) "Set up auto-counting"
+                else if (repetitionGoal != null) "Start counting" else "Start routine")
         }
-        OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth().testTag("edit-routine-button")) {
-            Text("Edit routine")
+        if (repetitionGoal != null && isPullUpCalibrated)
+        {
+            OutlinedButton(
+                onClick = onRecalibratePullUps,
+                modifier = Modifier.fillMaxWidth().testTag("recalibrate-pull-ups")
+            ) {
+                Text("Recalibrate auto-counting")
+            }
+        }
+        else if (repetitionGoal == null)
+        {
+            OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth().testTag("edit-routine-button")) {
+                Text("Edit routine")
+            }
         }
     }
 }
@@ -1962,6 +2036,11 @@ fun ActiveSessionScreen(
     onPause: () -> Unit,
     onResume: () -> Unit,
     onSkip: () -> Unit,
+    onIncrementRepetition: () -> Unit = { },
+    onDecrementRepetition: () -> Unit = { },
+    onFinishRepetitions: () -> Unit = { },
+    onUseManualCounter: () -> Unit = { },
+    onRetryCalibration: () -> Unit = { },
     onExit: () -> Unit,
     onKeepStretching: () -> Unit,
     onConfirmExit: () -> Unit,
@@ -1969,6 +2048,24 @@ fun ActiveSessionScreen(
 )
 {
     val currentStep = sessionState.currentStep
+    if (currentStep.goal is RoutineStepGoal.SensorRepetitions)
+    {
+        PullUpActiveSessionScreen(
+            sessionState = sessionState,
+            isExitConfirmationVisible = isExitConfirmationVisible,
+            onPause = onPause,
+            onResume = onResume,
+            onIncrementRepetition = onIncrementRepetition,
+            onDecrementRepetition = onDecrementRepetition,
+            onFinish = onFinishRepetitions,
+            onUseManualCounter = onUseManualCounter,
+            onRetryCalibration = onRetryCalibration,
+            onExit = onExit,
+            onKeepWorkingOut = onKeepStretching,
+            onConfirmExit = onConfirmExit
+        )
+        return
+    }
     val isWorkout = sessionState.routine.routineType == RoutineType.Workout
     val stepLabel = if (isWorkout) "Exercise" else "Stretch"
     var isUsingEasierVersion by rememberSaveable(sessionState.routine.id, sessionState.currentStepIndex) {
@@ -2075,6 +2172,150 @@ fun ActiveSessionScreen(
 }
 
 @Composable
+private fun PullUpActiveSessionScreen(
+    sessionState: SessionState,
+    isExitConfirmationVisible: Boolean,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onIncrementRepetition: () -> Unit,
+    onDecrementRepetition: () -> Unit,
+    onFinish: () -> Unit,
+    onUseManualCounter: () -> Unit,
+    onRetryCalibration: () -> Unit,
+    onExit: () -> Unit,
+    onKeepWorkingOut: () -> Unit,
+    onConfirmExit: () -> Unit
+)
+{
+    val isPaused = sessionState.phase == SessionPhase.Paused
+    val statusText = when
+    {
+        isPaused -> "Paused"
+        sessionState.repetitionTrackingStatus == RepetitionTrackingStatus.Calibrating ->
+            "Calibration: ${sessionState.calibrationProgress} of 3 practice reps"
+        sessionState.repetitionTrackingStatus == RepetitionTrackingStatus.CheckingPosition ->
+            "Hang still at the bottom for 2 seconds"
+        sessionState.repetitionTrackingStatus == RepetitionTrackingStatus.Counting ->
+            "Auto-counting is active"
+        sessionState.repetitionTrackingStatus == RepetitionTrackingStatus.Manual ->
+            "Manual counter"
+        sessionState.repetitionTrackingStatus == RepetitionTrackingStatus.CalibrationFailed ->
+            "Calibration needs another try"
+        sessionState.repetitionTrackingStatus == RepetitionTrackingStatus.SensorUnavailable ->
+            "Auto-counting is unavailable"
+        else -> "Preparing motion sensors"
+    }
+    FocusedScreen {
+        BackHeader("Pull-up counter", onExit)
+        GlassCard(modifier = Modifier.fillMaxWidth().testTag("pull-up-counter")) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    sessionState.repetitionCount.toString(),
+                    style = MaterialTheme.typography.displayLarge.copy(fontSize = 72.sp),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.semantics {
+                        contentDescription = "${sessionState.repetitionCount} pull-up reps"
+                        liveRegion = LiveRegionMode.Polite
+                    }
+                )
+                Text(if (sessionState.repetitionCount == 1) "rep" else "reps",
+                    style = MaterialTheme.typography.titleLarge)
+                Text(statusText, color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.testTag("rep-tracking-status"))
+            }
+        }
+        if (sessionState.repetitionTrackingStatus == RepetitionTrackingStatus.Calibrating)
+        {
+            TrainerMessageBubble(
+                "Keep the phone snug in either front pocket. Hang still, then perform three clean pull-ups " +
+                    "to the top position you want counted. Practice reps are not added to your workout."
+            )
+            OutlinedButton(onClick = onUseManualCounter, modifier = Modifier.fillMaxWidth()) {
+                Text("Use manual counter instead")
+            }
+        }
+        else if (sessionState.repetitionTrackingStatus == RepetitionTrackingStatus.SensorUnavailable ||
+            sessionState.repetitionTrackingStatus == RepetitionTrackingStatus.CalibrationFailed)
+        {
+            TrainerMessageBubble(sessionState.sensorError ?: "Automatic counting could not start.")
+            if (sessionState.repetitionTrackingStatus == RepetitionTrackingStatus.CalibrationFailed)
+            {
+                OutlinedButton(
+                    onClick = onRetryCalibration,
+                    modifier = Modifier.fillMaxWidth().testTag("retry-calibration")
+                ) { Text("Retry calibration") }
+            }
+            Button(onClick = onUseManualCounter, modifier = Modifier.fillMaxWidth().testTag("manual-counter")) {
+                FilledButtonText("Use manual counter")
+            }
+        }
+        else
+        {
+            TrainerMessageBubble(
+                if (sessionState.isManualCounting)
+                {
+                    "Tap +1 after each pull-up. Manual mode cannot count while the screen is locked."
+                }
+                else
+                {
+                    "Pull to your calibrated top position, then return fully to the bottom before the next rep."
+                }
+            )
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(
+                onClick = onDecrementRepetition,
+                enabled = sessionState.repetitionCount > 0,
+                modifier = Modifier.weight(1f).heightIn(min = 56.dp).testTag("decrement-rep")
+            ) { Text("−1", style = MaterialTheme.typography.titleLarge) }
+            Button(
+                onClick = onIncrementRepetition,
+                enabled = sessionState.repetitionTrackingStatus == RepetitionTrackingStatus.Counting ||
+                    sessionState.repetitionTrackingStatus == RepetitionTrackingStatus.Manual,
+                modifier = Modifier.weight(1f).heightIn(min = 56.dp).testTag("increment-rep")
+            ) { FilledButtonText("+1") }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().navigationBarsPadding().testTag("session-controls"),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            SecondaryActionButton("Exit", "Exit session", Modifier.weight(1f), onExit)
+            PrimaryActionButton(
+                if (isPaused) "Resume" else "Pause",
+                if (isPaused) "Resume session" else "Pause session",
+                Modifier.weight(1f).testTag("pause-resume-button"),
+                if (isPaused) onResume else onPause
+            )
+            Button(
+                onClick = onFinish,
+                enabled = sessionState.repetitionCount > 0,
+                modifier = Modifier.weight(1f).testTag("finish-repetitions")
+            ) { FilledButtonText("Finish") }
+        }
+    }
+    if (isExitConfirmationVisible)
+    {
+        AlertDialog(
+            onDismissRequest = onKeepWorkingOut,
+            title = { Text("Exit session?") },
+            text = { Text("Your current pull-up count will not be saved.") },
+            confirmButton = {
+                Button(onClick = onConfirmExit, modifier = Modifier.testTag("confirm-session-exit")) {
+                    FilledButtonText("Exit session")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = onKeepWorkingOut) { Text("Keep working out") }
+            }
+        )
+    }
+}
+
+@Composable
 fun CompletionScreen(
     sessionState: SessionState,
     onRestart: () -> Unit,
@@ -2096,6 +2337,11 @@ fun CompletionScreen(
                 fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
         }
         Text(sessionState.routine.title, style = MaterialTheme.typography.titleLarge)
+        if (sessionState.currentStep.goal is RoutineStepGoal.SensorRepetitions)
+        {
+            Text("${sessionState.repetitionCount} pull-up ${if (sessionState.repetitionCount == 1) "rep" else "reps"}",
+                style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        }
         Text("${sessionState.elapsedSeconds / 60} min ${sessionState.elapsedSeconds % 60} sec of time for yourself.",
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Button(onClick = onProgress, modifier = Modifier.fillMaxWidth()) { FilledButtonText("View progress") }
@@ -2118,6 +2364,8 @@ fun SettingsScreen(
     onAlertModeSelected: (AlertMode) -> Unit,
     selectedAlertTiming: AlertTiming,
     onAlertTimingSelected: (AlertTiming) -> Unit,
+    selectedRepFeedbackMode: RepFeedbackMode,
+    onRepFeedbackModeSelected: (RepFeedbackMode) -> Unit,
     selectedCountdownSeconds: Int,
     onCountdownSelected: (Int) -> Unit,
     isRemindersEnabled: Boolean,
@@ -2262,6 +2510,24 @@ fun SettingsScreen(
                 testTag = "alert-timing-${alertTiming.name.lowercase()}"
             )
         }
+        Text("Pull-up rep feedback", style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold)
+        Text("Choose how each automatically counted pull-up is confirmed while your phone is in your pocket.")
+        RepFeedbackMode.entries.forEach { feedbackMode ->
+            SettingsOptionButton(
+                label = if (feedbackMode == RepFeedbackMode.VibrationOnly)
+                {
+                    "Vibration only"
+                }
+                else
+                {
+                    "Sound + vibration"
+                },
+                isSelected = feedbackMode == selectedRepFeedbackMode,
+                onClick = { onRepFeedbackModeSelected(feedbackMode) },
+                testTag = "rep-feedback-${feedbackMode.name.lowercase()}"
+            )
+        }
         Text("Start countdown", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text("Choose how much preparation time appears before each routine.")
         Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -2395,15 +2661,23 @@ fun HistoryEditorScreen(uiState: StretchifyUiState, onEvent: (StretchifyEvent) -
     var stretchCountText by rememberSaveable(record?.id) {
         mutableStateOf((record?.completedStepCount ?: 1).toString())
     }
+    var repetitionCountText by rememberSaveable(record?.id) {
+        mutableStateOf(record?.stepResults?.firstNotNullOfOrNull { it.repetitionCount }?.toString() ?: "")
+    }
     var isConfirmingDelete by remember { mutableStateOf(false) }
     val parsedDateTime = runCatching { LocalDateTime.parse(dateTimeText, formatter) }.getOrNull()
     val durationSeconds = durationText.toIntOrNull()
     val stretchCount = stretchCountText.toIntOrNull()
     val selectedRoutine = uiState.catalog.firstOrNull { it.id == routineId }
+    val isRepetitionRoutine = selectedRoutine?.steps?.any {
+        it.goal is RoutineStepGoal.SensorRepetitions
+    } == true || record?.stepResults?.any { it.repetitionCount != null } == true
+    val repetitionCount = repetitionCountText.toIntOrNull()
     val isWorkout = selectedRoutine?.routineType == RoutineType.Workout ||
         (selectedRoutine == null && record?.routineType == RoutineType.Workout)
     val canSave = routineId.isNotBlank() && parsedDateTime != null && durationSeconds != null &&
-        durationSeconds > 0 && stretchCount != null && stretchCount >= 0
+        durationSeconds > 0 && stretchCount != null && stretchCount >= 0 &&
+        (!isRepetitionRoutine || repetitionCount != null && repetitionCount >= 0)
 
     FocusedScreen {
         BackHeader(if (record == null) "Add session" else "Edit session") {
@@ -2444,6 +2718,16 @@ fun HistoryEditorScreen(uiState: StretchifyUiState, onEvent: (StretchifyEvent) -
             singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag("history-stretch-count")
         )
+        if (isRepetitionRoutine)
+        {
+            OutlinedTextField(
+                value = repetitionCountText,
+                onValueChange = { repetitionCountText = it.filter(Char::isDigit).take(4) },
+                label = { Text("Pull-up repetitions") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().testTag("history-repetition-count")
+            )
+        }
         Button(
             onClick = {
                 onEvent(
@@ -2453,7 +2737,8 @@ fun HistoryEditorScreen(uiState: StretchifyUiState, onEvent: (StretchifyEvent) -
                         routineTitle = selectedRoutine?.title ?: record?.routineTitle,
                         completedAtMillis = parsedDateTime!!.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
                         elapsedSeconds = durationSeconds!!,
-                        completedStepCount = stretchCount!!
+                        completedStepCount = stretchCount!!,
+                        repetitionCount = if (isRepetitionRoutine) repetitionCount else null
                     )
                 )
             },

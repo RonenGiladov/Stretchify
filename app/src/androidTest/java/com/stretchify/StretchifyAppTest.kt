@@ -40,6 +40,7 @@ import com.stretchify.model.LiquidPreset
 import com.stretchify.model.StretchRoutine
 import com.stretchify.session.SessionEngine
 import com.stretchify.session.SessionPhase
+import com.stretchify.session.RepetitionTrackingStatus
 import com.stretchify.widget.StretchWidgetProvider
 import com.stretchify.ui.screens.ActiveSessionScreen
 import com.stretchify.ui.theme.StretchifyTheme
@@ -950,6 +951,37 @@ class StretchifyLayoutBoundsTest
             hasAnyDescendant(hasText("Exercise 1 of 5"))
         )
         composeRule.onNodeWithText("March in Place").assertIsDisplayed()
+    }
+
+    @Test
+    fun pullUpSessionShowsUntimedCounterAndCorrectionControls()
+    {
+        val routine = SampleRoutineProvider.pullUpCounter
+        val sessionState = SessionEngine(routine).startSession(SessionEngine(routine).initialState()).copy(
+            repetitionCount = 7,
+            repetitionTrackingStatus = RepetitionTrackingStatus.Counting
+        )
+        composeRule.setContent {
+            StretchifyTheme {
+                ActiveSessionScreen(
+                    sessionState = sessionState,
+                    isExitConfirmationVisible = false,
+                    onPause = {},
+                    onResume = {},
+                    onSkip = {},
+                    onExit = {},
+                    onKeepStretching = {},
+                    onConfirmExit = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("pull-up-counter").assertIsDisplayed()
+        composeRule.onNodeWithText("7").assertIsDisplayed()
+        composeRule.onNodeWithTag("increment-rep").assertHasClickAction()
+        composeRule.onNodeWithTag("decrement-rep").assertHasClickAction()
+        composeRule.onNodeWithTag("finish-repetitions").assertHasClickAction()
+        composeRule.onNodeWithTag("timer-panel").assertDoesNotExist()
     }
 
     private fun setActiveSessionContent(

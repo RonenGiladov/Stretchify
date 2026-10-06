@@ -15,6 +15,13 @@ import com.stretchify.model.GlassFinish
 import com.stretchify.model.GoalRevision
 import com.stretchify.model.GoalRoutine
 import com.stretchify.model.RoutineType
+import com.stretchify.model.ActiveRepetitionSession
+import com.stretchify.model.RepFeedbackMode
+import com.stretchify.model.RepCountSource
+import com.stretchify.model.RoutineStepGoal
+import com.stretchify.model.StepResult
+import com.stretchify.motion.PullUpCalibrationProfile
+import com.stretchify.motion.PullUpRepetitionDetector
 import java.time.DayOfWeek
 import org.json.JSONArray
 import org.json.JSONObject
@@ -318,6 +325,56 @@ class StretchifyRepositoryTest
         assertEquals(listOf(card), restored.loadDashboardCards(
             setOf("rounded-shoulders"), setOf(goal.id)))
         assertEquals(DayOfWeek.THURSDAY, restored.loadFirstDayOfWeek())
+    }
+
+    @Test
+    fun pullUpPreferencesAndActiveSessionSurviveRoundTrip()
+    {
+        val profile = PullUpCalibrationProfile(
+            PullUpRepetitionDetector.PROFILE_VERSION,
+            0.31f,
+            0.08f,
+            1_400L,
+            123L
+        )
+        val activeSession = ActiveRepetitionSession("session", "pull-up-counter", 7, 42, false, true, 100L)
+
+        repository.saveRepFeedbackMode(RepFeedbackMode.SoundAndVibration)
+        repository.savePullUpCalibrationProfile(profile)
+        repository.saveActiveRepetitionSession(activeSession)
+
+        val restored = StretchifyRepository(context)
+        assertEquals(RepFeedbackMode.SoundAndVibration, restored.loadRepFeedbackMode())
+        assertEquals(profile, restored.loadPullUpCalibrationProfile())
+        assertEquals(activeSession, restored.loadActiveRepetitionSession())
+
+        restored.clearPullUpCalibrationProfile()
+        restored.clearActiveRepetitionSession()
+        assertEquals(null, restored.loadPullUpCalibrationProfile())
+        assertEquals(null, restored.loadActiveRepetitionSession())
+    }
+
+    @Test
+    fun repetitionRoutineAndCompletionSurviveRoundTrip()
+    {
+        val routine = SampleRoutineProvider.pullUpCounter.copy(id = "custom-pull-ups")
+        val completion = CompletionRecord(
+            id = "pull-up-session",
+            routineId = routine.id,
+            completedAtMillis = 100L,
+            elapsedSeconds = 60,
+            completedStepCount = 1,
+            routineTitle = routine.title,
+            routineType = RoutineType.Workout,
+            stepResults = listOf(StepResult("pull-ups", 60, 8, RepCountSource.Automatic))
+        )
+
+        repository.saveCustomRoutines(listOf(routine))
+        repository.saveCompletionRecords(listOf(completion))
+
+        val restoredRoutine = repository.loadCustomRoutines().single()
+        assertTrue(restoredRoutine.steps.single().goal is RoutineStepGoal.SensorRepetitions)
+        assertEquals(completion, repository.loadCompletionRecords().single())
     }
 
     private fun clearPreferences()

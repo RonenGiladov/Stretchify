@@ -5,6 +5,7 @@ import com.stretchify.model.AlertTiming
 enum class SessionAlert
 {
     CountdownComplete,
+    Repetition,
     StretchComplete,
     RestComplete,
     RoutineComplete
@@ -23,7 +24,8 @@ object SessionAlertPolicy
             return SessionAlert.RoutineComplete
         }
 
-        if (previousState.phase == SessionPhase.Countdown && nextState.phase == SessionPhase.Stretching)
+        if (previousState.phase == SessionPhase.Countdown &&
+            (nextState.phase == SessionPhase.Stretching || nextState.phase == SessionPhase.TrackingRepetitions))
         {
             return SessionAlert.CountdownComplete
         }

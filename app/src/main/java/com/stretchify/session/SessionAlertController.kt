@@ -79,6 +79,7 @@ class SessionAlertController(private val context: Context)
             val soundResource = when (sessionAlert)
             {
                 SessionAlert.CountdownComplete -> R.raw.rest_complete
+                SessionAlert.Repetition -> R.raw.stretch_complete
                 SessionAlert.StretchComplete -> R.raw.stretch_complete
                 SessionAlert.RestComplete -> R.raw.rest_complete
                 SessionAlert.RoutineComplete -> R.raw.routine_complete
@@ -125,6 +126,7 @@ class SessionAlertController(private val context: Context)
         val timings = when (sessionAlert)
         {
             SessionAlert.CountdownComplete -> longArrayOf(0, 120)
+            SessionAlert.Repetition -> longArrayOf(0, 70)
             SessionAlert.StretchComplete -> longArrayOf(0, 120)
             SessionAlert.RestComplete -> longArrayOf(0, 60, 80, 60)
             SessionAlert.RoutineComplete -> longArrayOf(0, 150, 100, 220)

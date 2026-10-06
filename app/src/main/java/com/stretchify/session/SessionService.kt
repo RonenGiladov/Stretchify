@@ -15,7 +15,14 @@ import androidx.core.app.ServiceCompat
 import com.stretchify.MainActivity
 import com.stretchify.R
 import com.stretchify.StretchifyApplication
+import com.stretchify.data.StretchifyRepository
+import com.stretchify.model.RoutineStepGoal
 import com.stretchify.model.RoutineType
+import com.stretchify.model.RepetitionDetectorType
+import com.stretchify.motion.AndroidMotionSensorSource
+import com.stretchify.motion.RepetitionDetectionEvent
+import com.stretchify.motion.RepetitionDetector
+import com.stretchify.motion.RepetitionDetectorFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,6 +36,10 @@ class SessionService : Service()
 {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var sessionController: SessionController
+    private lateinit var repository: StretchifyRepository
+    private lateinit var motionSensorSource: AndroidMotionSensorSource
+    private var repetitionDetector: RepetitionDetector? = null
+    private var isMotionTracking = false
     private var wakeLock: PowerManager.WakeLock? = null
     private var completionStopJob: Job? = null
     private var isGracefulStop = false
@@ -37,11 +48,14 @@ class SessionService : Service()
     {
         super.onCreate()
         sessionController = (application as StretchifyApplication).sessionController
+        repository = StretchifyRepository(this)
+        motionSensorSource = AndroidMotionSensorSource(this)
         createNotificationChannel()
         startInForeground(sessionController.state.value)
         serviceScope.launch {
             sessionController.state.collectLatest { sessionState ->
-                updateWakeLock(sessionState.phase.isActive)
+                syncMotionTracking(sessionState)
+                updateWakeLock(shouldHoldWakeLock(sessionState))
                 notificationManager().notify(NOTIFICATION_ID, createNotification(sessionState))
                 if (sessionState.phase == SessionPhase.Completed)
                 {
@@ -62,32 +76,37 @@ class SessionService : Service()
         {
             ACTION_PAUSE -> sessionController.pause()
             ACTION_RESUME -> sessionController.resume()
+            ACTION_UNDO_REP -> sessionController.adjustRepetitionCount(-1)
+            ACTION_FINISH -> if (sessionController.state.value.repetitionCount > 0)
+            {
+                sessionController.finishRepetitionSession()
+            }
+            else
+            {
+                sessionController.stop()
+                stopSelf()
+            }
             ACTION_STOP ->
             {
                 sessionController.stop()
                 stopSelf()
             }
         }
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     override fun onTaskRemoved(rootIntent: Intent?)
     {
-        sessionController.stop()
-        stopSelf()
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy()
     {
         completionStopJob?.cancel()
+        stopMotionTracking()
         releaseWakeLock()
         serviceScope.cancel()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        if (!isGracefulStop && sessionController.state.value.phase != SessionPhase.NotStarted)
-        {
-            sessionController.stop()
-        }
         super.onDestroy()
     }
 
@@ -101,7 +120,7 @@ class SessionService : Service()
             createNotification(sessionState),
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
             {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH
             }
             else
             {
@@ -136,24 +155,55 @@ class SessionService : Service()
             {
                 getString(R.string.notification_stretching)
             }
+            SessionPhase.TrackingRepetitions -> when (sessionState.repetitionTrackingStatus)
+            {
+                RepetitionTrackingStatus.Calibrating -> getString(R.string.notification_calibrating)
+                RepetitionTrackingStatus.CheckingPosition,
+                RepetitionTrackingStatus.Preparing -> getString(R.string.notification_checking_position)
+                RepetitionTrackingStatus.Manual -> getString(R.string.notification_manual_counting)
+                RepetitionTrackingStatus.CalibrationFailed -> getString(R.string.notification_calibration_failed)
+                RepetitionTrackingStatus.SensorUnavailable -> getString(R.string.notification_sensor_unavailable)
+                else -> getString(R.string.notification_counting_reps)
+            }
             SessionPhase.Resting -> getString(R.string.notification_resting)
             SessionPhase.Paused -> getString(R.string.notification_paused)
             SessionPhase.Completed -> getString(R.string.notification_completed)
             else -> getString(R.string.notification_preparing)
         }
-        val timeText = String.format("%d:%02d", sessionState.remainingSeconds / 60, sessionState.remainingSeconds % 60)
+        val progressText = if (sessionState.currentStep.goal is RoutineStepGoal.SensorRepetitions)
+        {
+            resources.getQuantityString(R.plurals.repetition_count, sessionState.repetitionCount,
+                sessionState.repetitionCount)
+        }
+        else
+        {
+            String.format("%d:%02d", sessionState.remainingSeconds / 60, sessionState.remainingSeconds % 60)
+        }
         val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(sessionState.routine.title)
-            .setContentText("$phaseText • $timeText")
+            .setContentText("$phaseText • $progressText")
             .setContentIntent(openAppIntent)
             .setOnlyAlertOnce(true)
             .setOngoing(sessionState.phase != SessionPhase.Completed)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-        if (sessionState.phase != SessionPhase.Countdown)
+        if (sessionState.phase != SessionPhase.Countdown && sessionState.phase != SessionPhase.Completed)
         {
             builder.addAction(pauseOrResumeAction)
+        }
+        if (sessionState.currentStep.goal is RoutineStepGoal.SensorRepetitions &&
+            sessionState.phase != SessionPhase.Completed)
+        {
+            if (sessionState.repetitionCount > 0)
+            {
+                builder.addAction(NotificationCompat.Action(0, getString(R.string.undo_rep),
+                    servicePendingIntent(ACTION_UNDO_REP, 4)))
+            }
+            return builder
+                .addAction(NotificationCompat.Action(0, getString(R.string.finish),
+                    servicePendingIntent(ACTION_FINISH, 5)))
+                .build()
         }
         return builder
             .addAction(NotificationCompat.Action(0, getString(R.string.stop), servicePendingIntent(ACTION_STOP, 3)))
@@ -184,6 +234,121 @@ class SessionService : Service()
         }
     }
 
+    private fun shouldHoldWakeLock(sessionState: SessionState): Boolean
+    {
+        if (!sessionState.phase.isActive)
+        {
+            return false
+        }
+        if (sessionState.currentStep.goal !is RoutineStepGoal.SensorRepetitions)
+        {
+            return true
+        }
+        return !sessionState.isManualCounting && when (sessionState.repetitionTrackingStatus)
+        {
+            RepetitionTrackingStatus.Preparing,
+            RepetitionTrackingStatus.Calibrating,
+            RepetitionTrackingStatus.CheckingPosition,
+            RepetitionTrackingStatus.Counting -> true
+            else -> false
+        }
+    }
+
+    private fun syncMotionTracking(sessionState: SessionState)
+    {
+        val repetitionGoal = sessionState.currentStep.goal as? RoutineStepGoal.SensorRepetitions
+        val shouldTrack = sessionState.phase == SessionPhase.TrackingRepetitions &&
+            !sessionState.isManualCounting && repetitionGoal != null
+        if (!shouldTrack)
+        {
+            stopMotionTracking()
+            return
+        }
+        if (isMotionTracking && sessionState.repetitionTrackingStatus == RepetitionTrackingStatus.Preparing)
+        {
+            stopMotionTracking()
+        }
+        if (isMotionTracking || sessionState.repetitionTrackingStatus != RepetitionTrackingStatus.Preparing)
+        {
+            return
+        }
+        if (!motionSensorSource.isAvailable)
+        {
+            sessionController.updateRepetitionTracking(
+                RepetitionTrackingStatus.SensorUnavailable,
+                sensorError = getString(R.string.motion_sensor_unavailable)
+            )
+            return
+        }
+        val profile = repository.loadPullUpCalibrationProfile()
+        repetitionDetector = RepetitionDetectorFactory.create(repetitionGoal.detector, profile)
+        sessionController.updateRepetitionTracking(
+            if (profile == null) RepetitionTrackingStatus.Calibrating
+            else RepetitionTrackingStatus.CheckingPosition
+        )
+        isMotionTracking = motionSensorSource.start { sample ->
+            val events = repetitionDetector?.process(sample).orEmpty()
+            if (events.isNotEmpty())
+            {
+                serviceScope.launch {
+                    events.forEach(::handleDetectionEvent)
+                }
+            }
+        }
+        if (!isMotionTracking)
+        {
+            motionSensorSource.stop()
+            sessionController.updateRepetitionTracking(
+                RepetitionTrackingStatus.SensorUnavailable,
+                sensorError = getString(R.string.motion_sensor_start_failed)
+            )
+        }
+    }
+
+    private fun handleDetectionEvent(event: RepetitionDetectionEvent)
+    {
+        when (event)
+        {
+            RepetitionDetectionEvent.Ready -> sessionController.updateRepetitionTracking(
+                RepetitionTrackingStatus.Counting
+            )
+            is RepetitionDetectionEvent.CalibrationProgress -> sessionController.updateRepetitionTracking(
+                RepetitionTrackingStatus.Calibrating,
+                calibrationProgress = event.completedRepetitions
+            )
+            is RepetitionDetectionEvent.CalibrationComplete ->
+            {
+                repository.savePullUpCalibrationProfile(event.profile)
+                repetitionDetector = RepetitionDetectorFactory.create(
+                    RepetitionDetectorType.PullUp,
+                    event.profile
+                )
+                sessionController.updateRepetitionTracking(RepetitionTrackingStatus.CheckingPosition)
+            }
+            is RepetitionDetectionEvent.CalibrationFailed ->
+            {
+                stopMotionTracking()
+                sessionController.updateRepetitionTracking(
+                    RepetitionTrackingStatus.CalibrationFailed,
+                    calibrationProgress = 0,
+                    sensorError = event.reason
+                )
+            }
+            RepetitionDetectionEvent.Repetition -> sessionController.recordAutomaticRepetition()
+        }
+    }
+
+    private fun stopMotionTracking()
+    {
+        if (!isMotionTracking)
+        {
+            return
+        }
+        motionSensorSource.stop()
+        repetitionDetector = null
+        isMotionTracking = false
+    }
+
     private fun releaseWakeLock()
     {
         wakeLock?.takeIf { it.isHeld }?.release()
@@ -211,6 +376,8 @@ class SessionService : Service()
         const val ACTION_START = "com.stretchify.session.START"
         const val ACTION_PAUSE = "com.stretchify.session.PAUSE"
         const val ACTION_RESUME = "com.stretchify.session.RESUME"
+        const val ACTION_UNDO_REP = "com.stretchify.session.UNDO_REP"
+        const val ACTION_FINISH = "com.stretchify.session.FINISH"
         const val ACTION_STOP = "com.stretchify.session.STOP"
 
         private const val NOTIFICATION_CHANNEL_ID = "active_session"

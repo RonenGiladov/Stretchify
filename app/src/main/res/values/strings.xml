@@ -3,12 +3,26 @@
     <string name="pause">Pause</string>
     <string name="resume">Resume</string>
     <string name="stop">Stop</string>
+    <string name="finish">Finish</string>
+    <string name="undo_rep">Undo rep</string>
     <string name="notification_stretching">Stretching</string>
     <string name="notification_exercising">Exercising</string>
     <string name="notification_resting">Resting</string>
     <string name="notification_paused">Paused</string>
     <string name="notification_completed">Routine complete</string>
     <string name="notification_preparing">Preparing routine</string>
+    <string name="notification_calibrating">Calibrating pull-ups</string>
+    <string name="notification_checking_position">Checking bottom position</string>
+    <string name="notification_counting_reps">Counting pull-ups</string>
+    <string name="notification_manual_counting">Manual pull-up counter</string>
+    <string name="notification_sensor_unavailable">Automatic counting unavailable</string>
+    <string name="notification_calibration_failed">Pull-up calibration needs attention</string>
+    <string name="motion_sensor_unavailable">This phone does not provide the required motion sensor.</string>
+    <string name="motion_sensor_start_failed">The motion sensor could not be started.</string>
     <string name="session_notification_channel">Active routines</string>
-    <string name="session_notification_channel_description">Timer controls and progress for an active routine</string>
+    <string name="session_notification_channel_description">Timer and repetition controls for an active routine</string>
+    <plurals name="repetition_count">
+        <item quantity="one">%d rep</item>
+        <item quantity="other">%d reps</item>
+    </plurals>
 </resources>

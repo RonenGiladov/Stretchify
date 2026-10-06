@@ -24,7 +24,11 @@ import com.stretchify.model.AlertTiming
 import com.stretchify.model.DashboardCard
 import com.stretchify.model.DashboardCardType
 import com.stretchify.model.RoutineStep
+import com.stretchify.model.RoutineStepGoal
 import com.stretchify.model.RoutineType
+import com.stretchify.model.RepFeedbackMode
+import com.stretchify.model.RepCountSource
+import com.stretchify.model.StepResult
 import com.stretchify.model.Stretch
 import com.stretchify.model.StretchRoutine
 import com.stretchify.model.LiquidPreset
@@ -74,9 +78,11 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             completionRecords = sessionController.completionRecords.value,
             alertMode = repository.loadAlertMode(),
             alertTiming = repository.loadAlertTiming(),
+            repFeedbackMode = repository.loadRepFeedbackMode(),
             countdownSeconds = repository.loadCountdownSeconds(),
             isRemindersEnabled = repository.loadRemindersEnabled(),
-            reminderHour = repository.loadReminderHour()
+            reminderHour = repository.loadReminderHour(),
+            isPullUpCalibrated = repository.loadPullUpCalibrationProfile() != null
         )
     )
 
@@ -85,6 +91,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
 
     init
     {
+        sessionController.continueRestoredSession()
         refreshRewards()
         viewModelScope.launch {
             sessionController.savedCompletion.collect { completion ->
@@ -117,7 +124,10 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                     currentState.copy(
                         screen = nextScreen,
                         selectedRoutine = sessionState.routine,
-                        sessionState = sessionState
+                        sessionState = sessionState,
+                        isPullUpCalibrated = currentState.isPullUpCalibrated ||
+                            sessionState.repetitionTrackingStatus ==
+                            com.stretchify.session.RepetitionTrackingStatus.Counting
                     )
                 }
             }
@@ -168,6 +178,12 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             StretchifyEvent.PauseSession -> pauseSession()
             StretchifyEvent.ResumeSession -> resumeSession()
             StretchifyEvent.SkipCurrentStep -> skipCurrentStep()
+            StretchifyEvent.IncrementRepetition -> sessionController.adjustRepetitionCount(1)
+            StretchifyEvent.DecrementRepetition -> sessionController.adjustRepetitionCount(-1)
+            StretchifyEvent.FinishRepetitionSession -> sessionController.finishRepetitionSession()
+            StretchifyEvent.UseManualRepetitionCounter -> sessionController.enableManualCounting()
+            StretchifyEvent.RetryPullUpCalibration -> sessionController.retryPullUpCalibration()
+            StretchifyEvent.RecalibratePullUps -> recalibratePullUps()
             StretchifyEvent.RequestSessionExit -> requestSessionExit()
             StretchifyEvent.CancelSessionExit -> cancelSessionExit()
             StretchifyEvent.ConfirmSessionExit -> confirmSessionExit()
@@ -224,6 +240,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             }
             is StretchifyEvent.SelectAlertMode -> selectAlertMode(event.alertMode)
             is StretchifyEvent.SelectAlertTiming -> selectAlertTiming(event.alertTiming)
+            is StretchifyEvent.SelectRepFeedbackMode -> selectRepFeedbackMode(event.repFeedbackMode)
             is StretchifyEvent.SelectCountdown -> selectCountdown(event.seconds)
             is StretchifyEvent.SetRemindersEnabled -> setRemindersEnabled(event.isEnabled)
             is StretchifyEvent.SelectReminderHour -> selectReminderHour(event.hour)
@@ -315,6 +332,12 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                 sessionState = sessionController.state.value
             )
         }
+    }
+
+    private fun recalibratePullUps()
+    {
+        sessionController.clearPullUpCalibration()
+        mutableUiState.update { it.copy(isPullUpCalibrated = false) }
     }
 
     private fun cancelCountdown()
@@ -431,6 +454,10 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     private fun openRoutineEditor(routineId: String)
     {
         val routine = catalog.firstOrNull { it.id == routineId } ?: return
+        if (routine.steps.any { it.goal is RoutineStepGoal.SensorRepetitions })
+        {
+            return
+        }
         mutableUiState.update { it.copy(screen = StretchifyScreen.RoutineEditor, editingRoutine = routine) }
     }
 
@@ -655,7 +682,12 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                         easierDescription = existingStep?.stretch?.easierDescription
                     ),
                     durationSeconds = step.durationSeconds,
-                    restSeconds = step.restSeconds
+                    restSeconds = step.restSeconds,
+                    goal = when (val existingGoal = existingStep?.goal)
+                    {
+                        is RoutineStepGoal.SensorRepetitions -> existingGoal
+                        else -> RoutineStepGoal.Timed(step.durationSeconds)
+                    }
                 )
             }
         )
@@ -757,7 +789,20 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                 completedStepCount = event.completedStepCount,
                 routineTitle = routine?.title ?: event.routineTitle,
                 routineType = routine?.routineType ?: mutableUiState.value.editingHistoryRecord?.routineType
-                    ?: RoutineType.Stretch
+                    ?: RoutineType.Stretch,
+                stepResults = event.repetitionCount?.let { repetitionCount ->
+                    listOf(
+                        StepResult(
+                            stepId = routine?.steps?.firstOrNull()?.stretch?.id ?:
+                                mutableUiState.value.editingHistoryRecord?.stepResults?.firstOrNull()?.stepId ?:
+                                "manual-repetitions",
+                            elapsedSeconds = event.elapsedSeconds,
+                            repetitionCount = repetitionCount,
+                            repCountSource = mutableUiState.value.editingHistoryRecord?.stepResults?.firstOrNull()
+                                ?.repCountSource ?: RepCountSource.Manual
+                        )
+                    )
+                } ?: mutableUiState.value.editingHistoryRecord?.stepResults.orEmpty()
             )
         )
         mutableUiState.update {
@@ -792,6 +837,12 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         {
             sessionController.releaseAlerts()
         }
+    }
+
+    private fun selectRepFeedbackMode(repFeedbackMode: RepFeedbackMode)
+    {
+        repository.saveRepFeedbackMode(repFeedbackMode)
+        mutableUiState.update { it.copy(repFeedbackMode = repFeedbackMode) }
     }
 
     private fun selectAlertTiming(alertTiming: AlertTiming)
@@ -847,6 +898,7 @@ data class StretchifyUiState(
     val completionRecords: List<CompletionRecord>,
     val alertMode: AlertMode,
     val alertTiming: AlertTiming,
+    val repFeedbackMode: RepFeedbackMode,
     val countdownSeconds: Int,
     val isRemindersEnabled: Boolean,
     val reminderHour: Int,
@@ -866,7 +918,8 @@ data class StretchifyUiState(
     val delight: DelightPresentation? = null,
     val shouldAnimateDelight: Boolean = false,
     val welcomeBackRecordId: String? = null,
-    val rewards: RewardCollectionState = RewardCollectionState()
+    val rewards: RewardCollectionState = RewardCollectionState(),
+    val isPullUpCalibrated: Boolean = false
 )
 {
     val filteredRoutines: List<StretchRoutine>
@@ -927,6 +980,12 @@ sealed interface StretchifyEvent
     data object PauseSession : StretchifyEvent
     data object ResumeSession : StretchifyEvent
     data object SkipCurrentStep : StretchifyEvent
+    data object IncrementRepetition : StretchifyEvent
+    data object DecrementRepetition : StretchifyEvent
+    data object FinishRepetitionSession : StretchifyEvent
+    data object UseManualRepetitionCounter : StretchifyEvent
+    data object RetryPullUpCalibration : StretchifyEvent
+    data object RecalibratePullUps : StretchifyEvent
     data object RequestSessionExit : StretchifyEvent
     data object CancelSessionExit : StretchifyEvent
     data object ConfirmSessionExit : StretchifyEvent
@@ -966,7 +1025,8 @@ sealed interface StretchifyEvent
         val routineTitle: String?,
         val completedAtMillis: Long,
         val elapsedSeconds: Int,
-        val completedStepCount: Int
+        val completedStepCount: Int,
+        val repetitionCount: Int? = null
     ) : StretchifyEvent
     data class DeleteHistoryRecord(val recordId: String) : StretchifyEvent
     data object ResetDashboard : StretchifyEvent
@@ -986,6 +1046,7 @@ sealed interface StretchifyEvent
     data class SelectGlassFinish(val finish: GlassFinish) : StretchifyEvent
     data class SelectAlertMode(val alertMode: AlertMode) : StretchifyEvent
     data class SelectAlertTiming(val alertTiming: AlertTiming) : StretchifyEvent
+    data class SelectRepFeedbackMode(val repFeedbackMode: RepFeedbackMode) : StretchifyEvent
     data class SelectCountdown(val seconds: Int) : StretchifyEvent
     data class SetRemindersEnabled(val isEnabled: Boolean) : StretchifyEvent
     data class SelectReminderHour(val hour: Int) : StretchifyEvent

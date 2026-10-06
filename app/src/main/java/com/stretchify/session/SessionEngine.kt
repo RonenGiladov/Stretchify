@@ -1,6 +1,7 @@
 package com.stretchify.session
 
 import com.stretchify.model.RoutineStep
+import com.stretchify.model.RoutineStepGoal
 import com.stretchify.model.StretchRoutine
 
 class SessionEngine(private val routine: StretchRoutine)
@@ -45,12 +46,33 @@ class SessionEngine(private val routine: StretchRoutine)
 
     fun startStretching(state: SessionState): SessionState
     {
+        val firstStep = routine.steps.first()
+        val phase = if (firstStep.effectiveGoal is RoutineStepGoal.SensorRepetitions)
+        {
+            SessionPhase.TrackingRepetitions
+        }
+        else
+        {
+            SessionPhase.Stretching
+        }
         return state.copy(
-            phase = SessionPhase.Stretching,
+            phase = phase,
             currentStepIndex = 0,
-            remainingSeconds = routine.steps.first().durationSeconds,
+            remainingSeconds = (firstStep.effectiveGoal as? RoutineStepGoal.Timed)?.durationSeconds ?: 0,
             elapsedSeconds = 0,
-            previousActivePhase = null
+            previousActivePhase = null,
+            repetitionCount = 0,
+            isManualCounting = false,
+            repetitionTrackingStatus = if (phase == SessionPhase.TrackingRepetitions)
+            {
+                RepetitionTrackingStatus.Preparing
+            }
+            else
+            {
+                RepetitionTrackingStatus.NotApplicable
+            },
+            calibrationProgress = 0,
+            sensorError = null
         )
     }
 
@@ -107,6 +129,12 @@ class SessionEngine(private val routine: StretchRoutine)
         }
 
         val updatedRemainingSeconds = state.remainingSeconds - 1
+        if (state.phase == SessionPhase.TrackingRepetitions)
+        {
+            val shouldTrackElapsedTime = state.repetitionTrackingStatus == RepetitionTrackingStatus.Counting ||
+                state.repetitionTrackingStatus == RepetitionTrackingStatus.Manual
+            return state.copy(elapsedSeconds = state.elapsedSeconds + if (shouldTrackElapsedTime) 1 else 0)
+        }
         val updatedState = state.copy(
             remainingSeconds = updatedRemainingSeconds.coerceAtLeast(0),
             elapsedSeconds = state.elapsedSeconds + if (state.phase == SessionPhase.Countdown) 0 else 1
@@ -124,6 +152,20 @@ class SessionEngine(private val routine: StretchRoutine)
             SessionPhase.Resting -> moveToNextStretch(updatedState)
             else -> updatedState
         }
+    }
+
+    fun finishRepetitionSession(state: SessionState): SessionState
+    {
+        val activePhase = if (state.phase == SessionPhase.Paused) state.previousActivePhase else state.phase
+        if (activePhase != SessionPhase.TrackingRepetitions || state.repetitionCount <= 0)
+        {
+            return state
+        }
+        return state.copy(
+            phase = SessionPhase.Completed,
+            remainingSeconds = 0,
+            previousActivePhase = null
+        )
     }
 
     private fun movePastStretch(state: SessionState): SessionState
@@ -170,7 +212,12 @@ data class SessionState(
     val currentStepIndex: Int,
     val remainingSeconds: Int,
     val elapsedSeconds: Int,
-    val previousActivePhase: SessionPhase?
+    val previousActivePhase: SessionPhase?,
+    val repetitionCount: Int = 0,
+    val isManualCounting: Boolean = false,
+    val repetitionTrackingStatus: RepetitionTrackingStatus = RepetitionTrackingStatus.NotApplicable,
+    val calibrationProgress: Int = 0,
+    val sensorError: String? = null
 )
 {
     val currentStep: RoutineStep
@@ -217,7 +264,20 @@ enum class SessionPhase(val isActive: Boolean)
     ExplainingRoutine(false),
     Countdown(true),
     Stretching(true),
+    TrackingRepetitions(true),
     Resting(true),
     Paused(false),
     Completed(false)
+}
+
+enum class RepetitionTrackingStatus
+{
+    NotApplicable,
+    Preparing,
+    Calibrating,
+    CheckingPosition,
+    Counting,
+    Manual,
+    CalibrationFailed,
+    SensorUnavailable
 }

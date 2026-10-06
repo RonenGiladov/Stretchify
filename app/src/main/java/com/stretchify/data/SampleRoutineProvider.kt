@@ -1,9 +1,11 @@
 package com.stretchify.data
 
 import com.stretchify.model.RoutineStep
+import com.stretchify.model.RoutineStepGoal
 import com.stretchify.model.Stretch
 import com.stretchify.model.StretchRoutine
 import com.stretchify.model.RoutineType
+import com.stretchify.model.RepetitionDetectorType
 
 object SampleRoutineProvider
 {
@@ -256,6 +258,31 @@ object SampleRoutineProvider
         )
     )
 
+    val pullUpCounter: StretchRoutine = StretchRoutine(
+        id = "pull-up-counter",
+        title = "Pull-Up Counter",
+        goal = "Count full pull-ups automatically with your phone secured in a snug front pocket.",
+        category = "Upper Body",
+        difficulty = "Intermediate",
+        targetAreas = listOf("Back", "Arms", "Grip"),
+        isFeatured = true,
+        routineType = RoutineType.Workout,
+        steps = listOf(
+            RoutineStep(
+                stretch = Stretch(
+                    id = "pull-ups",
+                    name = "Pull-Ups",
+                    description = "Hang with control, pull to your calibrated top position, then return to the bottom.",
+                    trainerCue = "Keep the phone snug in a front pocket and avoid swinging between reps.",
+                    easierDescription = null
+                ),
+                durationSeconds = 0,
+                restSeconds = 0,
+                goal = RoutineStepGoal.SensorRepetitions(RepetitionDetectorType.PullUp)
+            )
+        )
+    )
+
     private fun workoutStep(
         id: String,
         name: String,
@@ -281,6 +308,7 @@ object SampleRoutineProvider
         morningPosture,
         hipFlexorStretch,
         neckPostureReset,
-        starterWorkout
+        starterWorkout,
+        pullUpCounter
     )
 }

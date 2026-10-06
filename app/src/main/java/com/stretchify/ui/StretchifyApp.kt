@@ -27,6 +27,7 @@ import com.stretchify.ui.screens.GoalEditorScreen
 import com.stretchify.ui.screens.RoutinePreviewScreen
 import com.stretchify.ui.screens.SettingsScreen
 import com.stretchify.ui.screens.TopLevelScreen
+import com.stretchify.model.RoutineStepGoal
 
 @Composable
 fun StretchifyApp(
@@ -54,7 +55,8 @@ fun StretchifyApp(
     val libraryListState = rememberLazyListState()
     val progressListState = rememberLazyListState()
     val view = LocalView.current
-    val shouldKeepScreenOn = uiState.sessionState.phase.isActive
+    val shouldKeepScreenOn = uiState.sessionState.phase.isActive &&
+        uiState.sessionState.currentStep.goal is RoutineStepGoal.Timed
 
     DisposableEffect(view, shouldKeepScreenOn)
     {
@@ -92,7 +94,9 @@ fun StretchifyApp(
                         sendEvent(StretchifyEvent.StartSession)
                     },
                     onBack = { sendEvent(StretchifyEvent.NavigateBack) },
-                    onEdit = { sendEvent(StretchifyEvent.OpenRoutineEditor(uiState.selectedRoutine.id)) }
+                    onEdit = { sendEvent(StretchifyEvent.OpenRoutineEditor(uiState.selectedRoutine.id)) },
+                    isPullUpCalibrated = uiState.isPullUpCalibrated,
+                    onRecalibratePullUps = { sendEvent(StretchifyEvent.RecalibratePullUps) }
                 )
                 StretchifyScreen.Countdown -> CountdownScreen(
                     remainingSeconds = uiState.sessionState.remainingSeconds,
@@ -106,6 +110,11 @@ fun StretchifyApp(
                     onPause = { sendEvent(StretchifyEvent.PauseSession) },
                     onResume = { sendEvent(StretchifyEvent.ResumeSession) },
                     onSkip = { sendEvent(StretchifyEvent.SkipCurrentStep) },
+                    onIncrementRepetition = { sendEvent(StretchifyEvent.IncrementRepetition) },
+                    onDecrementRepetition = { sendEvent(StretchifyEvent.DecrementRepetition) },
+                    onFinishRepetitions = { sendEvent(StretchifyEvent.FinishRepetitionSession) },
+                    onUseManualCounter = { sendEvent(StretchifyEvent.UseManualRepetitionCounter) },
+                    onRetryCalibration = { sendEvent(StretchifyEvent.RetryPullUpCalibration) },
                     onExit = { sendEvent(StretchifyEvent.RequestSessionExit) },
                     onKeepStretching = { sendEvent(StretchifyEvent.CancelSessionExit) },
                     onConfirmExit = { sendEvent(StretchifyEvent.ConfirmSessionExit) }
@@ -130,6 +139,8 @@ fun StretchifyApp(
                     onAlertModeSelected = { sendEvent(StretchifyEvent.SelectAlertMode(it)) },
                     selectedAlertTiming = uiState.alertTiming,
                     onAlertTimingSelected = { sendEvent(StretchifyEvent.SelectAlertTiming(it)) },
+                    selectedRepFeedbackMode = uiState.repFeedbackMode,
+                    onRepFeedbackModeSelected = { sendEvent(StretchifyEvent.SelectRepFeedbackMode(it)) },
                     selectedCountdownSeconds = uiState.countdownSeconds,
                     onCountdownSelected = { sendEvent(StretchifyEvent.SelectCountdown(it)) },
                     isRemindersEnabled = uiState.isRemindersEnabled,

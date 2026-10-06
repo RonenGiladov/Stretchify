@@ -173,4 +173,32 @@ class SessionEngineTest
         val finalStretchState = nextStretchState.copy(currentStepIndex = routine.steps.lastIndex)
         assertEquals(finalStretchState.remainingSeconds, finalStretchState.remainingRoutineSeconds)
     }
+
+    @Test
+    fun repetitionSessionIsUntimedAndDoesNotAutoComplete()
+    {
+        val repetitionEngine = SessionEngine(SampleRoutineProvider.pullUpCounter)
+        val startedState = repetitionEngine.startSession(repetitionEngine.initialState())
+        val tickedState = repetitionEngine.tick(
+            startedState.copy(repetitionTrackingStatus = RepetitionTrackingStatus.Counting)
+        )
+
+        assertEquals(SessionPhase.TrackingRepetitions, startedState.phase)
+        assertEquals(0, startedState.remainingSeconds)
+        assertEquals(SessionPhase.TrackingRepetitions, tickedState.phase)
+        assertEquals(1, tickedState.elapsedSeconds)
+    }
+
+    @Test
+    fun repetitionSessionFinishesOnlyAfterAtLeastOneRep()
+    {
+        val repetitionEngine = SessionEngine(SampleRoutineProvider.pullUpCounter)
+        val startedState = repetitionEngine.startSession(repetitionEngine.initialState())
+
+        assertEquals(startedState, repetitionEngine.finishRepetitionSession(startedState))
+        assertEquals(
+            SessionPhase.Completed,
+            repetitionEngine.finishRepetitionSession(startedState.copy(repetitionCount = 1)).phase
+        )
+    }
 }
