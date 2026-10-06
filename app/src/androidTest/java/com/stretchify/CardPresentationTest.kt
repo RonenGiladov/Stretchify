@@ -54,7 +54,7 @@ class CardPresentationTest
         check(directory.exists() || directory.mkdirs())
         try
         {
-            listOf(ThemePreference.ColorfulLight, ThemePreference.ColorfulDark,
+            listOf(ThemePreference.ColorfulLight, ThemePreference.VibrantLight, ThemePreference.ColorfulDark,
                 ThemePreference.Light, ThemePreference.Dark, ThemePreference.Liquid).forEach { preference ->
                 listOf(1f, 1.5f, 2f).forEach { scale ->
                     composeRule.runOnIdle {

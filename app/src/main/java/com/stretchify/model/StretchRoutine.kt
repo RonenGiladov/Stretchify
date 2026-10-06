@@ -62,6 +62,7 @@ enum class ThemePreference
     Light,
     Dark,
     ColorfulLight,
+    VibrantLight,
     ColorfulDark,
     Liquid
 }

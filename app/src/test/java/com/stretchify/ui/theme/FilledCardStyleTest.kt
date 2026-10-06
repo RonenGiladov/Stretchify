@@ -33,9 +33,11 @@ class FilledCardStyleTest
     @Test
     fun readablePalettesMaintainContrastAcrossEveryGradientSegment()
     {
-        listOf(false, true).forEach { isDark ->
+        listOf(false to false, true to false, false to true).forEach { (isDark, isVibrantLight) ->
             repeat(5) { seed ->
-                val style = calculateReadableCardStyle(filledCardStyle(false, seed, isDark))
+                val style = calculateReadableCardStyle(
+                    filledCardStyle(false, seed, isDark, isVibrantLight)
+                )
                 listOf(style.centerColor to style.bandColor, style.bandColor to style.outerColor)
                     .forEach { (start, end) ->
                         for (sample in 0..1000)
@@ -50,7 +52,10 @@ class FilledCardStyleTest
                                 val foreground = text.luminance()
                                 val contrast = (maxOf(background, foreground) + 0.05f) /
                                     (minOf(background, foreground) + 0.05f)
-                                assertTrue("Palette $seed dark=$isDark contrast=$contrast", contrast >= 4.5f)
+                                assertTrue(
+                                    "Palette $seed dark=$isDark vibrant=$isVibrantLight contrast=$contrast",
+                                    contrast >= 4.5f
+                                )
                             }
                         }
                     }
@@ -91,6 +96,34 @@ class FilledCardStyleTest
         assertEquals(wrapped.bandColor, negative.bandColor)
         assertEquals(wrapped.outerColor, negative.outerColor)
         assertNotEquals(wrapped.noiseSeed, negative.noiseSeed)
+    }
+
+    @Test
+    fun vibrantLightSeedsRotateThroughEverySaturatedPalette()
+    {
+        val styles = (0 until 5).map { seed -> filledCardStyle(false, seed, isVibrantLight = true) }
+
+        assertEquals(5, styles.map { it.bandColor }.distinct().size)
+        assertEquals(Color(0xFFB94D79), styles[0].bandColor)
+        assertEquals(Color(0xFFC96D4C), styles[1].bandColor)
+        assertEquals(Color(0xFF8464B8), styles[2].bandColor)
+        assertEquals(Color(0xFF4E89B5), styles[3].bandColor)
+        assertEquals(Color(0xFF4C957F), styles[4].bandColor)
+        styles.forEach { style -> assertEquals(Color.White, style.contentColor) }
+    }
+
+    @Test
+    fun vibrantLightPaletteSelectionIsDeterministicAndSupportsNegativeHashes()
+    {
+        val first = filledCardStyle(true, -1, isVibrantLight = true)
+        val second = filledCardStyle(false, -1, isVibrantLight = true)
+        val wrapped = filledCardStyle(false, 4, isVibrantLight = true)
+
+        assertEquals(first, second)
+        assertEquals(wrapped.centerColor, first.centerColor)
+        assertEquals(wrapped.bandColor, first.bandColor)
+        assertEquals(wrapped.outerColor, first.outerColor)
+        assertEquals(-1, first.noiseSeed)
     }
 
     @Test

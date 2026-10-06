@@ -178,6 +178,7 @@ import com.stretchify.ui.theme.LocalFilledCard
 import com.stretchify.ui.theme.LocalFilledCardAccentColor
 import com.stretchify.ui.theme.LocalFilledCardSecondaryColor
 import com.stretchify.ui.theme.LocalColorfulLight
+import com.stretchify.ui.theme.LocalVibrantLight
 import com.stretchify.ui.theme.LocalColorfulDark
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
@@ -342,7 +343,8 @@ private fun TopLevelDestinationContent(
         TopLevelDestination.Library -> libraryListState
         TopLevelDestination.Progress -> progressListState
     }
-    val edgeFadeModifier = if (LocalColorfulLight.current || LocalColorfulDark.current)
+    val edgeFadeModifier = if (LocalColorfulLight.current || LocalVibrantLight.current ||
+        LocalColorfulDark.current)
     {
         Modifier
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
@@ -523,7 +525,12 @@ private val TopLevelDestination.symbol: String
     }
 
 @Composable
-private fun ScreenHeader(title: String, subtitle: String, onSettings: () -> Unit)
+private fun ScreenHeader(
+    title: String,
+    subtitle: String,
+    onSettings: () -> Unit,
+    onCustomizeHome: (() -> Unit)? = null
+)
 {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -543,11 +550,25 @@ private fun ScreenHeader(title: String, subtitle: String, onSettings: () -> Unit
                 style = MaterialTheme.typography.bodyLarge
             )
         }
-        IconButton(
-            onClick = onSettings,
-            modifier = Modifier.semantics { contentDescription = "Open settings" }
-        ) {
-            Text("⚙", style = MaterialTheme.typography.titleLarge)
+        Row(verticalAlignment = Alignment.CenterVertically)
+        {
+            if (onCustomizeHome != null)
+            {
+                IconButton(
+                    onClick = onCustomizeHome,
+                    modifier = Modifier
+                        .testTag("customize-home-button")
+                        .semantics { contentDescription = "Customize Home" }
+                ) {
+                    Text("✎", style = MaterialTheme.typography.titleLarge)
+                }
+            }
+            IconButton(
+                onClick = onSettings,
+                modifier = Modifier.semantics { contentDescription = "Open settings" }
+            ) {
+                Text("⚙", style = MaterialTheme.typography.titleLarge)
+            }
         }
     }
 }
@@ -585,14 +606,16 @@ fun HomeScreen(
             .fillMaxSize()
             .safeDrawingPadding()
             .testTag("home-screen"),
-        contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 140.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 20.dp, end = 16.dp, bottom = 140.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         item {
             ScreenHeader(
                 title = "Stretchify",
                 subtitle = "Move better, one calm reset at a time.",
-                onSettings = { onEvent(StretchifyEvent.OpenSettings) }
+                onSettings = { onEvent(StretchifyEvent.OpenSettings) },
+                onCustomizeHome = if (uiState.isDashboardEditing) null else
+                    ({ onEvent(StretchifyEvent.OpenDashboardEditor) })
             )
         }
         if (uiState.welcomeBackRecordId != null)
@@ -652,49 +675,32 @@ fun HomeScreen(
                     }
                 }
             }
-            AnimatedContent(
-                targetState = uiState.isDashboardEditing,
-                transitionSpec = {
-                    (fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 4 }) togetherWith
-                        (fadeOut(tween(150)) + slideOutVertically(tween(150)) { -it / 4 })
-                },
-                label = "Home edit actions"
-            ) { isEditing ->
-                if (isEditing)
-                {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            AnimatedVisibility(
+                visible = uiState.isDashboardEditing,
+                enter = fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 4 },
+                exit = fadeOut(tween(150)) + slideOutVertically(tween(150)) { -it / 4 }
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { onEvent(StretchifyEvent.OpenCardGallery) },
+                        modifier = Modifier.weight(1f).testTag("add-card-button")
                     ) {
-                        OutlinedButton(
-                            onClick = { onEvent(StretchifyEvent.OpenCardGallery) },
-                            modifier = Modifier.weight(1f).testTag("add-card-button")
-                        ) {
-                            Text("Add")
-                        }
-                        OutlinedButton(
-                            onClick = { onEvent(StretchifyEvent.ResetDashboard) },
-                            modifier = Modifier.weight(1f).testTag("reset-dashboard-button")
-                        ) {
-                            Text("Reset")
-                        }
-                        Button(
-                            onClick = { onEvent(StretchifyEvent.CloseDashboardEditor) },
-                            modifier = Modifier.weight(1f).testTag("dashboard-done-button")
-                        ) {
-                            FilledButtonText("Done")
-                        }
+                        Text("Add")
                     }
-                }
-                else
-                {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        OutlinedButton(
-                            onClick = { onEvent(StretchifyEvent.OpenDashboardEditor) },
-                            modifier = Modifier.testTag("customize-home-button")
-                        ) {
-                            Text("Customize Home")
-                        }
+                    OutlinedButton(
+                        onClick = { onEvent(StretchifyEvent.ResetDashboard) },
+                        modifier = Modifier.weight(1f).testTag("reset-dashboard-button")
+                    ) {
+                        Text("Reset")
+                    }
+                    Button(
+                        onClick = { onEvent(StretchifyEvent.CloseDashboardEditor) },
+                        modifier = Modifier.weight(1f).testTag("dashboard-done-button")
+                    ) {
+                        FilledButtonText("Done")
                     }
                 }
             }
@@ -793,7 +799,7 @@ private fun DashboardGrid(
     }) {
         val gridWidth = constraints.maxWidth.toFloat()
         val gap = with(density) { 12.dp.toPx() }
-        val heightUnit = with(density) { 112.dp.toPx() }
+        val heightUnit = with(density) { 120.dp.toPx() }
         val halfWidth = (gridWidth - gap) / 2f
         val hysteresis = with(density) { 8.dp.toPx() }
         LaunchedEffect(gridWidth, density)
@@ -1136,7 +1142,8 @@ private fun DashboardCardContent(
         filledStyle = filledCardStyle(
             card.type == DashboardCardType.Routine || card.type == DashboardCardType.Goal,
             card.colorSeed ?: card.id.hashCode(),
-            LocalColorfulDark.current
+            LocalColorfulDark.current,
+            LocalVibrantLight.current
         )
     ) {
         Box(
@@ -1293,7 +1300,7 @@ private fun InlineCardEditControls(
     val iconColor by animateColorAsState(
         targetValue = if (isResizing)
         {
-            if (LocalFilledCard.current && LocalColorfulLight.current) Color.White
+            if (LocalFilledCard.current && (LocalColorfulLight.current || LocalVibrantLight.current)) Color.White
             else MaterialTheme.colorScheme.onPrimary
         }
         else
@@ -1393,13 +1400,13 @@ private fun LibraryScreen(
             .fillMaxSize()
             .safeDrawingPadding()
             .testTag("library-screen"),
-        contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 140.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 20.dp, end = 16.dp, bottom = 140.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            ScreenHeader("Library", "Find the right reset for how you feel.") {
+            ScreenHeader("Library", "Find the right reset for how you feel.", onSettings = {
                 onEvent(StretchifyEvent.OpenSettings)
-            }
+            })
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1551,7 +1558,12 @@ private fun RoutineLibraryCard(
     GlassCard(
         modifier = Modifier.testTag("library-routine-${routine.id}"),
         useCardTypography = true,
-        filledStyle = filledCardStyle(true, routine.id.hashCode(), LocalColorfulDark.current)
+        filledStyle = filledCardStyle(
+            true,
+            routine.id.hashCode(),
+            LocalColorfulDark.current,
+            LocalVibrantLight.current
+        )
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -1633,13 +1645,13 @@ private fun ProgressScreen(
             .fillMaxSize()
             .safeDrawingPadding()
             .testTag("progress-screen"),
-        contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 140.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 20.dp, end = 16.dp, bottom = 140.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            ScreenHeader("Progress", "Small sessions add up to lasting mobility.") {
+            ScreenHeader("Progress", "Small sessions add up to lasting mobility.", onSettings = {
                 onEvent(StretchifyEvent.OpenSettings)
-            }
+            })
         }
         item { ProgressCards(summary) }
         if (uiState.startedGoals.isNotEmpty())
@@ -1698,7 +1710,12 @@ private fun ProgressScreen(
                     }
                     .testTag("history-${record.id}"),
                     useCardTypography = true,
-                    filledStyle = filledCardStyle(false, record.id.hashCode(), LocalColorfulDark.current)) {
+                    filledStyle = filledCardStyle(
+                        false,
+                        record.id.hashCode(),
+                        LocalColorfulDark.current,
+                        LocalVibrantLight.current
+                    )) {
                     BoxWithConstraints(Modifier.fillMaxWidth()) {
                         val shouldStack = maxWidth < (260 * LocalDensity.current.fontScale).dp
                         val metadataWidth = maxWidth * 0.38f
@@ -1829,15 +1846,18 @@ private fun ProgressCards(summary: ProgressSummary)
         FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp), maxItemsInEachRow = columns) {
             GlassCard(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), useCardTypography = true,
-                filledStyle = filledCardStyle(false, "progress-streak".hashCode(), LocalColorfulDark.current)) {
+                filledStyle = filledCardStyle(false, "progress-streak".hashCode(), LocalColorfulDark.current,
+                    LocalVibrantLight.current)) {
                 SummaryCardText("Streak", "${summary.currentStreak}", "days", isStatistic = true)
             }
             GlassCard(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), useCardTypography = true,
-                filledStyle = filledCardStyle(false, "progress-week".hashCode(), LocalColorfulDark.current)) {
+                filledStyle = filledCardStyle(false, "progress-week".hashCode(), LocalColorfulDark.current,
+                    LocalVibrantLight.current)) {
                 SummaryCardText("This week", "${summary.weeklySessions}", "sessions", isStatistic = true)
             }
             GlassCard(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), useCardTypography = true,
-                filledStyle = filledCardStyle(false, "progress-total".hashCode(), LocalColorfulDark.current)) {
+                filledStyle = filledCardStyle(false, "progress-total".hashCode(), LocalColorfulDark.current,
+                    LocalVibrantLight.current)) {
                 SummaryCardText("Total", "${summary.totalMinutes}", "minutes", isStatistic = true)
             }
         }
@@ -2165,6 +2185,7 @@ fun SettingsScreen(
                 label = when (preference)
                 {
                     ThemePreference.ColorfulLight -> "Colorful Light"
+                    ThemePreference.VibrantLight -> "Vibrant Light"
                     ThemePreference.ColorfulDark -> "Colorful Dark"
                     else -> preference.name
                 },

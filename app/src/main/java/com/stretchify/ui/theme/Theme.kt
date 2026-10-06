@@ -48,6 +48,7 @@ private val StretchifyLightColorScheme = lightColorScheme(
 )
 
 val LocalColorfulLight = compositionLocalOf { false }
+val LocalVibrantLight = compositionLocalOf { false }
 val LocalColorfulDark = compositionLocalOf { false }
 val LocalLiquidPreset = compositionLocalOf<LiquidPreset?> { null }
 val LocalGlassFinish = compositionLocalOf { GlassFinish.Clear }
@@ -82,9 +83,14 @@ private val StretchifyColorfulDarkColorScheme = StretchifyDarkColorScheme.copy(
 
 private val NunitoFontFamily = FontFamily(Font(R.font.nunito))
 
-fun filledCardStyle(isWarm: Boolean, seed: Int, isDark: Boolean = false): FilledCardStyle
+fun filledCardStyle(
+    isWarm: Boolean,
+    seed: Int,
+    isDark: Boolean = false,
+    isVibrantLight: Boolean = false
+): FilledCardStyle
 {
-    if (isDark)
+    if (isDark || isVibrantLight)
     {
         val palettes = listOf(
             FilledCardStyle(
@@ -150,6 +156,7 @@ fun StretchifyTheme(
         ThemePreference.Light -> false
         ThemePreference.Dark -> true
         ThemePreference.ColorfulLight -> false
+        ThemePreference.VibrantLight -> false
         ThemePreference.ColorfulDark -> true
         ThemePreference.Liquid -> liquidPreset != LiquidPreset.Daylight
     }
@@ -191,6 +198,7 @@ fun StretchifyTheme(
         LocalGlassFinish provides glassFinish,
         LocalColorfulLight provides (themePreference == ThemePreference.ColorfulLight ||
             themePreference == ThemePreference.System && !isDarkTheme),
+        LocalVibrantLight provides (themePreference == ThemePreference.VibrantLight),
         LocalColorfulDark provides (themePreference == ThemePreference.ColorfulDark ||
             themePreference == ThemePreference.System && isDarkTheme)
     ) {
@@ -207,6 +215,7 @@ fun StretchifyTheme(
                 themePreference == ThemePreference.System && isDarkTheme -> StretchifyColorfulDarkColorScheme
                 themePreference == ThemePreference.System -> StretchifyColorfulLightColorScheme
                 isDarkTheme -> StretchifyDarkColorScheme
+                themePreference == ThemePreference.VibrantLight -> StretchifyColorfulLightColorScheme
                 themePreference == ThemePreference.ColorfulLight -> StretchifyColorfulLightColorScheme
                 else -> StretchifyLightColorScheme
             },

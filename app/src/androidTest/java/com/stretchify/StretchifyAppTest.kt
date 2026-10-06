@@ -486,6 +486,17 @@ class StretchifyAppNavigationTest
     }
 
     @Test
+    fun customizeHomeHeaderActionOpensAndClosesEditor()
+    {
+        composeRule.onNodeWithContentDescription("Customize Home").assertIsDisplayed().performClick()
+
+        composeRule.onNodeWithTag("add-card-button").assertIsDisplayed()
+        composeRule.onNodeWithTag("customize-home-button").assertDoesNotExist()
+        composeRule.onNodeWithTag("dashboard-done-button").performClick()
+        composeRule.onNodeWithContentDescription("Customize Home").assertIsDisplayed()
+    }
+
+    @Test
     fun addingRoutineFromLibraryDoesNotCrashAndUpdatesHome()
     {
         composeRule.onNodeWithTag("customize-home-button").performClick()
@@ -775,7 +786,7 @@ class StretchifyAppNavigationTest
         val bounds = composeRule.onNodeWithTag("dashboard-card-routine-rounded-shoulders")
             .fetchSemanticsNode().boundsInRoot
         assertTrue("Content must be allowed to grow beyond the minimum span height",
-            bounds.height > with(composeRule.density) { 112.dp.toPx() })
+            bounds.height > with(composeRule.density) { 120.dp.toPx() })
         composeRule.onNodeWithTag("resize-card-routine-rounded-shoulders").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Remove Fix Rounded Shoulders").assertIsDisplayed()
     }
@@ -825,6 +836,13 @@ class StretchifyAppNavigationTest
 
         composeRule.onNodeWithTag("theme-dark").assert(isSelected())
         composeRule.onNodeWithText("Dark").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("theme-vibrantlight").performScrollTo().performClick()
+        composeRule.onNodeWithTag("theme-vibrantlight").assert(isSelected())
+        composeRule.onNodeWithText("Vibrant Light").assertIsDisplayed()
+        composeRule.onNodeWithTag("glass-finish-clear").assertDoesNotExist()
+        composeRule.activityRule.scenario.recreate()
+        composeRule.onNodeWithTag("theme-vibrantlight").performScrollTo().assert(isSelected())
 
         composeRule.onNodeWithTag("theme-colorfuldark").performScrollTo().performClick()
         composeRule.onNodeWithTag("theme-colorfuldark").assert(isSelected())

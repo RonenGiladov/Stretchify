@@ -32,6 +32,7 @@ import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import com.stretchify.ui.theme.FilledCardStyle
 import com.stretchify.ui.theme.LocalColorfulLight
+import com.stretchify.ui.theme.LocalVibrantLight
 import com.stretchify.ui.theme.LocalColorfulDark
 import com.stretchify.ui.theme.LocalFilledCard
 import com.stretchify.ui.theme.LocalFilledCardAccentColor
@@ -57,8 +58,9 @@ fun GlassBackground(content: @Composable BoxScope.() -> Unit)
         {
             val colors = MaterialTheme.colorScheme
             val isColorfulLight = LocalColorfulLight.current
+            val isVibrantLight = LocalVibrantLight.current
             val isColorfulDark = LocalColorfulDark.current
-            val gradientColors = if (isColorfulLight)
+            val gradientColors = if (isColorfulLight || isVibrantLight)
             {
                 listOf(Color(0xFFE6F8EF), Color(0xFFD5F2E5), Color(0xFFCDEFE7))
             }
@@ -78,7 +80,8 @@ fun GlassBackground(content: @Composable BoxScope.() -> Unit)
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        if (isColorfulLight || isColorfulDark) Brush.verticalGradient(gradientColors)
+                        if (isColorfulLight || isVibrantLight || isColorfulDark)
+                            Brush.verticalGradient(gradientColors)
                         else Brush.linearGradient(gradientColors)
                     )
             ) {
@@ -103,9 +106,10 @@ fun GlassCard(
     val shape = RoundedCornerShape(24.dp)
     val isLiquid = LocalLiquidPreset.current != null
     val isColorfulLight = LocalColorfulLight.current
+    val isVibrantLight = LocalVibrantLight.current
     val isColorfulDark = LocalColorfulDark.current
-    val isFilled = (isColorfulLight || isColorfulDark) && filledStyle != null
-    val hasNoisyBackground = (isColorfulLight || isColorfulDark) && filledStyle != null
+    val isFilled = (isColorfulLight || isVibrantLight || isColorfulDark) && filledStyle != null
+    val hasNoisyBackground = (isColorfulLight || isVibrantLight || isColorfulDark) && filledStyle != null
     Surface(
         modifier = modifier
             .fillMaxWidth()

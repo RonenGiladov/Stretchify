@@ -217,6 +217,14 @@ class StretchifyRepositoryTest
     }
 
     @Test
+    fun vibrantLightPreferenceSurvivesRoundTrip()
+    {
+        repository.saveThemePreference(ThemePreference.VibrantLight)
+
+        assertEquals(ThemePreference.VibrantLight, repository.loadThemePreference())
+    }
+
+    @Test
     fun malformedValuesRecoverSafely()
     {
         context.getSharedPreferences(StretchifyRepository.PREFERENCES_NAME, Context.MODE_PRIVATE)
