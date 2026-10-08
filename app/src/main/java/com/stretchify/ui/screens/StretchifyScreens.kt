@@ -200,6 +200,12 @@ import java.time.format.DateTimeFormatter
 
 private const val WEEKLY_SESSION_GOAL = 3
 
+private data class CustomRoutineStepInput(
+    val name: String,
+    val durationText: String,
+    val restText: String
+)
+
 @Composable
 fun TopLevelScreen(
     uiState: StretchifyUiState,
@@ -2790,8 +2796,12 @@ fun CustomRoutineCreatorScreen(
     var durationText by rememberSaveable { mutableStateOf("60") }
     var restText by rememberSaveable { mutableStateOf("10") }
     var steps by remember(routine?.id) {
-        mutableStateOf<List<CustomRoutineStep>>(routine?.steps?.map { step ->
-            CustomRoutineStep(step.stretch.name, step.durationSeconds, step.restSeconds)
+        mutableStateOf<List<CustomRoutineStepInput>>(routine?.steps?.map { step ->
+            CustomRoutineStepInput(
+                step.stretch.name,
+                step.durationSeconds.toString(),
+                step.restSeconds.toString()
+            )
         } ?: emptyList())
     }
     var isConfirmingDestructiveAction by remember { mutableStateOf(false) }
@@ -2799,8 +2809,13 @@ fun CustomRoutineCreatorScreen(
     val restSeconds = restText.toIntOrNull()
     val canAddStretch = stretchName.isNotBlank() && durationSeconds != null && durationSeconds in 10..600 &&
         restSeconds != null && restSeconds in 0..300
-    val canCreate = title.isNotBlank() && goal.isNotBlank() && steps.isNotEmpty() &&
-        steps.all { it.name.isNotBlank() && it.durationSeconds in 10..600 && it.restSeconds in 0..300 }
+    val areStepsValid = steps.all { step ->
+        val stepDurationSeconds = step.durationText.toIntOrNull()
+        val stepRestSeconds = step.restText.toIntOrNull()
+        step.name.isNotBlank() && stepDurationSeconds != null && stepDurationSeconds in 10..600 &&
+            stepRestSeconds != null && stepRestSeconds in 0..300
+    }
+    val canCreate = title.isNotBlank() && goal.isNotBlank() && steps.isNotEmpty() && areStepsValid
     val stepLabel = if (routineType == RoutineType.Workout) "Exercise" else "Stretch"
     val stepLabelLowercase = stepLabel.lowercase()
 
@@ -2883,10 +2898,10 @@ fun CustomRoutineCreatorScreen(
         )
         OutlinedButton(
             onClick = {
-                steps = steps + CustomRoutineStep(
+                steps = steps + CustomRoutineStepInput(
                     name = stretchName.trim(),
-                    durationSeconds = durationSeconds!!,
-                    restSeconds = restSeconds!!
+                    durationText = durationSeconds!!.toString(),
+                    restText = restSeconds!!.toString()
                 )
                 stretchName = ""
                 durationText = "60"
@@ -2917,31 +2932,34 @@ fun CustomRoutineCreatorScreen(
                         )
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
-                                value = step.durationSeconds.toString(),
+                                value = step.durationText,
                                 onValueChange = { value ->
-                                    value.filter(Char::isDigit).toIntOrNull()
-                                        ?.takeIf { it in 10..600 }?.let { seconds ->
-                                        steps = steps.mapIndexed { stepIndex, item ->
-                                            if (stepIndex == index) item.copy(durationSeconds = seconds) else item
+                                    steps = steps.mapIndexed { stepIndex, item ->
+                                        if (stepIndex == index)
+                                        {
+                                            item.copy(durationText = value.filter(Char::isDigit).take(3))
                                         }
+                                        else item
                                     }
                                 },
                                 label = { Text("$stepLabel sec") },
                                 singleLine = true,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f).testTag("custom-step-duration-$index")
                             )
                             OutlinedTextField(
-                                value = step.restSeconds.toString(),
+                                value = step.restText,
                                 onValueChange = { value ->
-                                    value.filter(Char::isDigit).toIntOrNull()?.takeIf { it in 0..300 }?.let { seconds ->
-                                        steps = steps.mapIndexed { stepIndex, item ->
-                                            if (stepIndex == index) item.copy(restSeconds = seconds) else item
+                                    steps = steps.mapIndexed { stepIndex, item ->
+                                        if (stepIndex == index)
+                                        {
+                                            item.copy(restText = value.filter(Char::isDigit).take(3))
                                         }
+                                        else item
                                     }
                                 },
                                 label = { Text("Rest sec") },
                                 singleLine = true,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f).testTag("custom-step-rest-$index")
                             )
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End,
@@ -2988,7 +3006,13 @@ fun CustomRoutineCreatorScreen(
                         routineId = routine?.id,
                         title = title,
                         goal = goal,
-                        steps = steps,
+                        steps = steps.map { step ->
+                            CustomRoutineStep(
+                                name = step.name,
+                                durationSeconds = step.durationText.toInt(),
+                                restSeconds = step.restText.toInt()
+                            )
+                        },
                         routineType = routineType,
                         goalIds = linkedGoalIds
                     )
