@@ -66,7 +66,7 @@ fun GlassBackground(content: @Composable BoxScope.() -> Unit)
             }
             else if (isColorfulDark)
             {
-                listOf(Color(0xFF142B49), Color(0xFF24272B), Color(0xFF2B2119))
+                listOf(colors.background, Color(0xFF24212C))
             }
             else
             {

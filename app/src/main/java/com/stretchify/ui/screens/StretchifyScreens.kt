@@ -66,6 +66,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationRail
@@ -80,6 +81,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -116,6 +118,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.contentDescription
@@ -133,6 +136,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import com.stretchify.data.ProgressSummary
+import com.stretchify.R
 import com.stretchify.data.DelightPresentation
 import com.stretchify.ui.components.DelightCard
 import com.stretchify.ui.components.HomeRewards
@@ -565,20 +569,25 @@ private fun ScreenHeader(
         {
             if (onCustomizeHome != null)
             {
-                IconButton(
+                TextButton(
                     onClick = onCustomizeHome,
                     modifier = Modifier
                         .testTag("customize-home-button")
                         .semantics { contentDescription = "Customize Home" }
                 ) {
-                    Text("✎", style = MaterialTheme.typography.titleLarge)
+                    Text("Edit", style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold)
                 }
             }
             IconButton(
                 onClick = onSettings,
                 modifier = Modifier.semantics { contentDescription = "Open settings" }
             ) {
-                Text("⚙", style = MaterialTheme.typography.titleLarge)
+                Icon(
+                    painter = painterResource(R.drawable.ic_settings),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp)
+                )
             }
         }
     }
@@ -623,7 +632,7 @@ fun HomeScreen(
         item {
             ScreenHeader(
                 title = "Stretchify",
-                subtitle = "Move better, one calm reset at a time.",
+                subtitle = "One calm reset at a time.",
                 onSettings = { onEvent(StretchifyEvent.OpenSettings) },
                 onCustomizeHome = if (uiState.isDashboardEditing) null else
                     ({ onEvent(StretchifyEvent.OpenDashboardEditor) })
@@ -653,12 +662,6 @@ fun HomeScreen(
                 )
             }
         }
-        item(key = "home-rewards") {
-            HomeRewards(uiState.rewards, uiState.screen == com.stretchify.ui.StretchifyScreen.TopLevel &&
-                uiState.selectedDestination == TopLevelDestination.Home,
-                onPresented = { onEvent(StretchifyEvent.PresentHomeRewards(it)) },
-                onViewed = { onEvent(StretchifyEvent.ViewBadges(it)) })
-        }
         item {
             if (lastCompletedRoutine != null)
             {
@@ -667,20 +670,25 @@ fun HomeScreen(
                     enter = fadeIn(tween(220)) + expandVertically(tween(220)),
                     exit = fadeOut(tween(150)) + shrinkVertically(tween(220))
                 ) {
-                    Column(modifier = Modifier.padding(bottom = 18.dp)) {
-                        GlassCard(modifier = Modifier
-                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
-                            .clickable(enabled = !uiState.isDashboardEditing) { isRepeatSheetVisible = true }
-                            .testTag("repeat-last-routine-card")) {
-                            Text("Pick up where you left off", style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold)
-                            Text(lastCompletedRoutine.title, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    GlassCard(modifier = Modifier
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
+                        .clickable(enabled = !uiState.isDashboardEditing,
+                            onClickLabel = "View last routine") { isRepeatSheetVisible = true }
+                        .testTag("repeat-last-routine-card")) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("Last routine", style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(lastCompletedRoutine.title, style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
+                            }
                             Button(
                                 onClick = { onEvent(StretchifyEvent.RepeatLastRoutine) },
                                 enabled = !uiState.isDashboardEditing,
-                                modifier = Modifier.fillMaxWidth().testTag("repeat-last-routine-button")
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                    .testTag("repeat-last-routine-button")
                             ) {
-                                FilledButtonText("Repeat last routine")
+                                FilledButtonText("Repeat routine")
                             }
                         }
                     }
@@ -715,6 +723,12 @@ fun HomeScreen(
                     }
                 }
             }
+        }
+        item(key = "home-rewards") {
+            HomeRewards(uiState.rewards, uiState.screen == com.stretchify.ui.StretchifyScreen.TopLevel &&
+                uiState.selectedDestination == TopLevelDestination.Home,
+                onPresented = { onEvent(StretchifyEvent.PresentHomeRewards(it)) },
+                onViewed = { onEvent(StretchifyEvent.ViewBadges(it)) })
         }
         item(key = "dashboard-grid") {
             if (uiState.dashboardCards.isEmpty())
@@ -1890,24 +1904,21 @@ private fun ProgressScreen(
 private fun ProgressCards(summary: ProgressSummary)
 {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val columns = ((maxWidth.value + 12f) / (112f * LocalDensity.current.fontScale + 12f))
-            .toInt().coerceIn(1, 3)
-        FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp), maxItemsInEachRow = columns) {
-            GlassCard(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), useCardTypography = true,
-                filledStyle = filledCardStyle(false, "progress-streak".hashCode(), LocalColorfulDark.current,
-                    LocalVibrantLight.current)) {
-                SummaryCardText("Streak", "${summary.currentStreak}", "days", isStatistic = true)
-            }
-            GlassCard(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), useCardTypography = true,
-                filledStyle = filledCardStyle(false, "progress-week".hashCode(), LocalColorfulDark.current,
-                    LocalVibrantLight.current)) {
-                SummaryCardText("This week", "${summary.weeklySessions}", "sessions", isStatistic = true)
-            }
-            GlassCard(modifier = Modifier.weight(1f), contentPadding = PaddingValues(16.dp), useCardTypography = true,
-                filledStyle = filledCardStyle(false, "progress-total".hashCode(), LocalColorfulDark.current,
-                    LocalVibrantLight.current)) {
-                SummaryCardText("Total", "${summary.totalMinutes}", "minutes", isStatistic = true)
+        val columns = if (maxWidth < (240 * LocalDensity.current.fontScale).dp) 1 else 3
+        FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = columns) {
+            listOf(
+                Triple("Streak", "${summary.currentStreak}", "days"),
+                Triple("This week", "${summary.weeklySessions}", "sessions"),
+                Triple("Total", "${summary.totalMinutes}", "minutes")
+            ).forEach { (eyebrow, title, body) ->
+                GlassCard(
+                    modifier = Modifier.weight(1f).fillMaxRowHeight().semantics(mergeDescendants = true) { },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp),
+                    useCardTypography = true
+                ) {
+                    SummaryCardText(eyebrow, title, body, isStatistic = true)
+                }
             }
         }
     }

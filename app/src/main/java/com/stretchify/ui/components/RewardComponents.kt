@@ -7,9 +7,12 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -39,7 +42,6 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -95,15 +97,16 @@ fun HomeRewards(
             }
         }
     }
-    GlassCard(modifier = Modifier.testTag("home-rewards").onGloballyPositioned {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
+        .testTag("home-rewards").onGloballyPositioned {
         isVisible = it.boundsInWindow().overlaps(it.findRootCoordinates().boundsInWindow())
     }.graphicsLayer {
         scaleX = pulse.value
         scaleY = pulse.value
     }) {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Your moments", style = MaterialTheme.typography.titleLarge,
+                Text("Your moments", style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f).semantics { heading() })
                 if (rewards.badges.isNotEmpty())
                 {
@@ -112,48 +115,34 @@ fun HomeRewards(
                     }
                 }
             }
+            rewards.badges.firstOrNull()?.let { badge ->
+                RewardBadge(badge, isActive && !isCollectionVisible, false, onPresented, onViewed,
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .clickable(onClickLabel = "View all achievements") { isCollectionVisible = true })
+            }
             if (rewards.hasCompletedToday)
             {
-                Row(verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RewardEmblem(BadgeKind.Goal, Modifier.size(40.dp))
-                    Text("You showed up today.", style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.testTag("today-recognition").weight(1f))
-                }
-            }
-            if (rewards.badges.isNotEmpty())
-            {
-                if (LocalDensity.current.fontScale > 1.3f)
-                {
-                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        rewards.badges.take(3).forEach { badge ->
-                            RewardBadge(badge, isActive && !isCollectionVisible, false, onPresented, onViewed,
-                                Modifier.fillMaxWidth().clickable { isCollectionVisible = true })
-                        }
-                    }
-                }
-                else
-                {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        rewards.badges.take(3).forEach { badge ->
-                            RewardBadge(badge, isActive && !isCollectionVisible, false, onPresented, onViewed,
-                                Modifier.weight(1f).clickable { isCollectionVisible = true })
-                        }
-                    }
-                }
+                Text("You showed up today.", style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Normal, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("today-recognition"))
             }
             val target = rewards.nextRoutineTarget
             if (target != null)
             {
-                Text(if (target == 1) "Your first badge starts with one routine."
-                    else "Next badge: $target moments", style = MaterialTheme.typography.bodyLarge)
                 LinearProgressIndicator(
                     progress = { (rewards.totalRoutines.toFloat() / target).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().testTag("next-badge-progress")
+                    modifier = Modifier.fillMaxWidth().testTag("next-badge-progress"),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                    gapSize = 0.dp,
+                    drawStopIndicator = { }
                 )
-                val routineLabel = if (target == 1) "routine" else "routines"
-                Text("${rewards.totalRoutines.coerceAtMost(target)} of $target $routineLabel",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val remainingRoutines = (target - rewards.totalRoutines).coerceAtLeast(0)
+                val routineLabel = if (remainingRoutines == 1) "routine" else "routines"
+                Text(if (target == 1) "Your first badge starts with one routine."
+                    else "$remainingRoutines more $routineLabel to your next badge",
+                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Normal,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -176,6 +165,7 @@ fun HomeRewards(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RewardBadge(
     badge: AchievementBadge,
@@ -221,24 +211,47 @@ private fun RewardBadge(
             }
         }
     }
-    Column(modifier = modifier.testTag("badge-${badge.id}").onGloballyPositioned {
+    val badgeModifier = modifier.testTag("badge-${badge.id}").onGloballyPositioned {
         isVisible = it.boundsInWindow().overlaps(it.findRootCoordinates().boundsInWindow())
-    }.semantics(mergeDescendants = true) { contentDescription = badge.description },
-        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        RewardEmblem(badge.kind, Modifier.size(64.dp).graphicsLayer {
-            scaleX = scale.value
-            scaleY = scale.value
-        })
-        Text(badge.title, style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-        if (badge.isNew)
-        {
-            Text("New", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
-        }
-        if (isCollectionEntry)
-        {
+    }.semantics(mergeDescendants = true) { contentDescription = badge.description }
+    if (isCollectionEntry)
+    {
+        Column(modifier = badgeModifier, horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            RewardEmblem(badge.kind, Modifier.size(64.dp).graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+            })
+            Text(badge.title, style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+            if (badge.isNew)
+            {
+                Text("New", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+            }
             Text(badge.description, textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+    else
+    {
+        Row(modifier = badgeModifier, verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            RewardEmblem(badge.kind, Modifier.size(48.dp).graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+            })
+            FlowRow(modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(badge.title, style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.CenterVertically))
+                if (badge.isNew)
+                {
+                    Text("New", color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.align(Alignment.CenterVertically))
+                }
+            }
         }
     }
 }

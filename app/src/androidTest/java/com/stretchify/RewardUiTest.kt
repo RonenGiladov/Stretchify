@@ -70,7 +70,10 @@ class RewardUiTest
             }
         }
         composeRule.onNodeWithText("You showed up today.").assertIsDisplayed()
-        composeRule.onNodeWithText("Next badge: 10 moments").assertIsDisplayed()
+        composeRule.onNodeWithText("5 more routines to your next badge").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("badge-total:5").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("badge-streak:3").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("badge-goal").assertCountEquals(0)
         composeRule.onAllNodesWithTag("badge-first").assertCountEquals(0)
         saveScreenshot("rewards-light")
         composeRule.onNodeWithTag("view-badges").performClick()
