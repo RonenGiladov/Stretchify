@@ -230,6 +230,15 @@ data class SessionState(
         get()
         {
             val activePhase = if (phase == SessionPhase.Paused) previousActivePhase else phase
+            if (activePhase == SessionPhase.NotStarted || activePhase == SessionPhase.ExplainingRoutine ||
+                activePhase == SessionPhase.Countdown)
+            {
+                return routine.estimatedDurationSeconds
+            }
+            if (activePhase == SessionPhase.Completed)
+            {
+                return 0
+            }
             val currentRestSeconds = if (currentStepIndex < routine.steps.lastIndex)
             {
                 currentStep.restSeconds

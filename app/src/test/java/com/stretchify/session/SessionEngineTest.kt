@@ -146,6 +146,53 @@ class SessionEngineTest
     }
 
     @Test
+    fun preparationStatesShowFullRoutineTimeWithoutCountdown()
+    {
+        val initialState = sessionEngine.initialState()
+        val previewState = sessionEngine.explainRoutine(initialState)
+        val countdownState = sessionEngine.startSession(previewState, 5)
+        val tickedState = sessionEngine.tick(countdownState)
+        val pausedState = sessionEngine.pause(tickedState)
+
+        listOf(initialState, previewState, countdownState, tickedState, pausedState,
+            sessionEngine.resume(pausedState)).forEach { state ->
+            assertEquals(routine.estimatedDurationSeconds, state.remainingRoutineSeconds)
+        }
+    }
+
+    @Test
+    fun completeTimedSessionMatchesEstimateWithoutFinalRest()
+    {
+        val timedRoutine = routine.copy(
+            steps = listOf(
+                routine.steps.first().copy(durationSeconds = 3, restSeconds = 2),
+                routine.steps.last().copy(durationSeconds = 4, restSeconds = 5)
+            )
+        )
+        val timedEngine = SessionEngine(timedRoutine)
+        var state = timedEngine.startSession(timedEngine.initialState(), 3)
+
+        repeat(3) { state = timedEngine.tick(state) }
+        assertEquals(9, state.remainingRoutineSeconds)
+        repeat(9) { elapsedSeconds ->
+            state = timedEngine.tick(state)
+            assertEquals(8 - elapsedSeconds, state.remainingRoutineSeconds)
+        }
+
+        assertEquals(SessionPhase.Completed, state.phase)
+        assertEquals(9, state.elapsedSeconds)
+        assertEquals(timedRoutine.estimatedDurationSeconds, state.elapsedSeconds)
+    }
+
+    @Test
+    fun completedStateHasNoRemainingTimeEvenWithUpcomingSteps()
+    {
+        val completedState = sessionEngine.initialState().copy(phase = SessionPhase.Completed)
+
+        assertEquals(0, completedState.remainingRoutineSeconds)
+    }
+
+    @Test
     fun remainingTimeTracksStretchRestPauseAndSkip()
     {
         val startedState = sessionEngine.startSession(sessionEngine.initialState())
@@ -158,10 +205,15 @@ class SessionEngineTest
 
         val pausedState = sessionEngine.pause(startedState)
         assertEquals(expectedTotal, pausedState.remainingRoutineSeconds)
+        assertEquals(expectedTotal, sessionEngine.resume(pausedState).remainingRoutineSeconds)
 
         val restState = sessionEngine.skip(startedState)
         assertEquals(expectedTotal - routine.steps.first().durationSeconds, restState.remainingRoutineSeconds)
         assertEquals(restState.remainingRoutineSeconds, sessionEngine.pause(restState).remainingRoutineSeconds)
+        assertEquals(
+            restState.remainingRoutineSeconds,
+            sessionEngine.resume(sessionEngine.pause(restState)).remainingRoutineSeconds
+        )
 
         val nextStretchState = sessionEngine.skip(restState)
         assertEquals(1, nextStretchState.currentStepIndex)
@@ -187,6 +239,9 @@ class SessionEngineTest
         assertEquals(0, startedState.remainingSeconds)
         assertEquals(SessionPhase.TrackingRepetitions, tickedState.phase)
         assertEquals(1, tickedState.elapsedSeconds)
+        assertEquals(0, startedState.remainingRoutineSeconds)
+        assertEquals(0, tickedState.remainingRoutineSeconds)
+        assertEquals(0, repetitionEngine.pause(tickedState).remainingRoutineSeconds)
     }
 
     @Test

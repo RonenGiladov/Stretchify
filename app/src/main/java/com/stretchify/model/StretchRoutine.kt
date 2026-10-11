@@ -54,7 +54,7 @@ data class StretchRoutine(
         get() = steps.sumOf { step ->
             val durationSeconds = (step.effectiveGoal as? RoutineStepGoal.Timed)?.durationSeconds ?: 0
             durationSeconds + step.restSeconds
-        }
+        } - (steps.lastOrNull()?.restSeconds ?: 0)
 }
 
 enum class RoutineType
