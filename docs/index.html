@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#183b32">
+    <meta
+      name="description"
+      content="Meet Stretchify: a native Android app for guided movement breaks. Watch the demo, explore real app screens, and see how it was built with Kotlin and Jetpack Compose.">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Stretchify — a little movement, a better day.">
+    <meta
+      property="og:description"
+      content="Guided movement breaks, built for Android. Explore the app and the engineering behind it.">
+    <meta property="og:url" content="https://ronengiladov.github.io/Stretchify/">
+    <meta property="og:image" content="https://ronengiladov.github.io/Stretchify/assets/social-preview.jpg">
+    <meta
+      property="og:image:alt"
+      content="Stretchify&#x27;s Home and guided session screens on a soft green background.">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="canonical" href="https://ronengiladov.github.io/Stretchify/">
+    <link rel="icon" href="assets/mark.png" type="image/png">
+    <link rel="preload" href="assets/nunito.ttf" as="font" type="font/ttf" crossorigin>
+    <link rel="stylesheet" href="styles.css">
+    <script src="demo-config.js" defer>
+    </script>
+    <script src="script.js" defer>
+    </script>
+    <title>
+      Stretchify — Guided movement breaks, built for Android
+    </title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">
+      Skip to content
+    </a>
+    <header class="site-header wrap">
+      <a class="brand" href="#" aria-label="Stretchify home">
+        <img src="assets/mark.png" width="38" height="38" alt="">
+        <span>
+          Stretchify
+          <span class="brand-dot">
+            .
+          </span>
+        </span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="#experience">
+          The app
+        </a>
+        <a href="#engineering">
+          The build
+        </a>
+        <a class="source-link" href="https://github.com/RonenGiladov/Stretchify">
+          GitHub
+          <span aria-hidden="true">
+            ↗
+          </span>
+        </a>
+      </nav>
+    </header>
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">
+            <span class="status-dot" aria-hidden="true">
+            </span>
+            A NATIVE ANDROID PROJECT
+          </p>
+          <h1 id="hero-title">
+            A little movement.
+            <br>
+            A
+            <em>
+              better
+            </em>
+            day.
+          </h1>
+          <p class="hero-subtitle">
+            Guided movement breaks, built for Android.
+          </p>
+          <p class="hero-description">
+            Step away from the desk. Find your routine. Build a habit that feels good—with a thoughtful app that keeps
+            the next move simple.
+          </p>
+          <div class="actions">
+            <a class="button primary" href="#walkthrough">
+              <span aria-hidden="true">
+                ▶
+              </span>
+              Watch demo
+            </a>
+            <button class="button secondary try-demo" type="button" hidden>
+              Try in browser
+              <span aria-hidden="true">
+                ↗
+              </span>
+            </button>
+            <a class="button secondary explore-link" href="#experience">
+              Explore the app
+              <span aria-hidden="true">
+                ↓
+              </span>
+            </a>
+            <a class="text-link hero-source" href="https://github.com/RonenGiladov/Stretchify">
+              View source
+              <span aria-hidden="true">
+                ↗
+              </span>
+            </a>
+          </div>
+          <p class="microcopy">
+            An inside look. No download or sign-in needed.
+          </p>
+          <div class="tech-stack" aria-label="Technology stack">
+            <span>
+              Kotlin
+            </span>
+            <span>
+              Jetpack Compose
+            </span>
+            <span>
+              Native Android
+            </span>
+          </div>
+        </div>
+        <div class="hero-art">
+          <div class="orbit orbit-one" aria-hidden="true">
+          </div>
+          <div class="orbit orbit-two" aria-hidden="true">
+          </div>
+          <span class="floating-note note-top">
+            <span aria-hidden="true">
+              ✳
+            </span>
+            Make room to move.
+          </span>
+          <div class="phone hero-phone">
+            <img
+              src="assets/home.webp"
+              width="1080"
+              height="1920"
+              fetchpriority="high"
+              alt="Stretchify Home with favorite routines, a repeat-session card, and daily rewards.">
+          </div>
+          <span class="floating-note note-bottom">
+            <span class="tiny-check" aria-hidden="true">
+              ✓
+            </span>
+            Small breaks. Steady progress.
+          </span>
+          <span class="art-caption">
+            REAL APP. REAL SCREENS.
+          </span>
+        </div>
+      </section>
+      <div class="feature-strip">
+        <div class="wrap strip-inner">
+          <span>
+            Made for your between-meeting moments.
+          </span>
+          <span>
+            Guided routines
+            <b aria-hidden="true">
+              ✳
+            </b>
+            Mindful pacing
+            <b aria-hidden="true">
+              ✳
+            </b>
+            Visible progress
+          </span>
+        </div>
+      </div>
+      <section class="walkthrough wrap section" id="walkthrough" aria-labelledby="walkthrough-title">
+        <div class="section-intro">
+          <div>
+            <p class="eyebrow">
+              01 / SEE IT IN MOTION
+            </p>
+            <h2 id="walkthrough-title">
+              From “one more email”
+              <br>
+              to your next stretch.
+            </h2>
+          </div>
+          <p>
+            A quick tour of the actual Android app: choose a routine, control your session, check your progress, and
+            make it your own.
+          </p>
+        </div>
+        <div class="video-layout">
+          <div class="video-stage">
+            <video
+              id="walkthrough-video"
+              controls
+              playsinline
+              preload="metadata"
+              poster="assets/video-poster.jpg"
+              width="1280"
+              height="720"
+              aria-label="Stretchify app walkthrough">
+              <source src="assets/walkthrough.mp4" type="video/mp4">
+              <track default kind="captions" src="assets/captions.vtt" srclang="en" label="English">
+              Your browser cannot play this video.
+              <a href="assets/walkthrough.mp4">
+                Download the walkthrough.
+              </a>
+            </video>
+            <div class="video-footer">
+              <span>
+                <span class="status-dot" aria-hidden="true">
+                </span>
+                Captured on Android
+              </span>
+              <span>
+                Sample activity data
+              </span>
+            </div>
+          </div>
+          <ol class="tour-steps">
+            <li>
+              <span>
+                01
+              </span>
+              <div>
+                <h3>
+                  Find your reset
+                </h3>
+                <p>
+                  Browse stretches and workouts for the moment you’re in.
+                </p>
+              </div>
+            </li>
+            <li>
+              <span>
+                02
+              </span>
+              <div>
+                <h3>
+                  Follow your own pace
+                </h3>
+                <p>
+                  Guided steps, rest intervals, and a timer you can pause.
+                </p>
+              </div>
+            </li>
+            <li>
+              <span>
+                03
+              </span>
+              <div>
+                <h3>
+                  See the habit grow
+                </h3>
+                <p>
+                  Session history and streaks make your consistency visible.
+                </p>
+              </div>
+            </li>
+            <li>
+              <span>
+                04
+              </span>
+              <div>
+                <h3>
+                  Make it feel like you
+                </h3>
+                <p>
+                  Choose a theme and customize your routines and Home.
+                </p>
+              </div>
+            </li>
+          </ol>
+        </div>
+        <details class="transcript">
+          <summary>
+            Read the video transcript
+          </summary>
+          <p>
+            The tour begins on Home with sample routine and progress cards. The Library lets you explore routines.
+            Opening a routine reveals its exercises and guidance. Start the session to follow a countdown, pause when
+            you need a moment, and resume at your own pace. The Progress screen shows sample activity and streaks. In
+            Settings, switch from a bright theme to a colorful dark appearance, then return Home.
+          </p>
+        </details>
+      </section>
+      <section class="experience-section" id="experience" aria-labelledby="experience-title">
+        <div class="wrap section">
+          <div class="section-intro">
+            <div>
+              <p class="eyebrow">
+                02 / A CLOSER LOOK
+              </p>
+              <h2 id="experience-title">
+                Thoughtful, from
+                <br>
+                the first tap.
+              </h2>
+            </div>
+            <p>
+              Purposeful screens for a simple daily ritual. These are captures of the running app, with sample activity
+              to illustrate the experience.
+            </p>
+          </div>
+          <div class="screen-grid">
+            <figure>
+              <a href="assets/home.webp" aria-label="Open full-size Home screenshot">
+                <div class="screen-well sage">
+                  <img
+                    src="assets/home.webp"
+                    width="1080"
+                    height="1920"
+                    loading="lazy"
+                    alt="Home dashboard showing favorite routines, a repeat-session card, and daily rewards.">
+                </div>
+              </a>
+              <figcaption>
+                <span>
+                  01
+                </span>
+                <div>
+                  <h3>
+                    Your starting point
+                  </h3>
+                  <p>
+                    Favorite routines and daily momentum, together.
+                  </p>
+                </div>
+              </figcaption>
+            </figure>
+            <figure>
+              <a href="assets/library.webp" aria-label="Open full-size Library screenshot">
+                <div class="screen-well peach">
+                  <img
+                    src="assets/library.webp"
+                    width="1080"
+                    height="1920"
+                    loading="lazy"
+                    alt="Routine library with search, category filters, and a custom routine button.">
+                </div>
+              </a>
+              <figcaption>
+                <span>
+                  02
+                </span>
+                <div>
+                  <h3>
+                    A routine for right now
+                  </h3>
+                  <p>
+                    Explore by body area, or build your own.
+                  </p>
+                </div>
+              </figcaption>
+            </figure>
+            <figure>
+              <a href="assets/session.webp" aria-label="Open full-size session screenshot">
+                <div class="screen-well lavender">
+                  <img
+                    src="assets/session.webp"
+                    width="1080"
+                    height="1920"
+                    loading="lazy"
+                    alt="Active stretching session with a countdown timer, exercise guidance, and session controls.">
+                </div>
+              </a>
+              <figcaption>
+                <span>
+                  03
+                </span>
+                <div>
+                  <h3>
+                    One move at a time
+                  </h3>
+                  <p>
+                    Clear guidance. A steady rhythm. Room to pause.
+                  </p>
+                </div>
+              </figcaption>
+            </figure>
+            <figure>
+              <a href="assets/progress.webp" aria-label="Open full-size Progress screenshot">
+                <div class="screen-well sand">
+                  <img
+                    src="assets/progress.webp"
+                    width="1080"
+                    height="1920"
+                    loading="lazy"
+                    alt="Progress screen with sample session history and movement statistics.">
+                </div>
+              </a>
+              <figcaption>
+                <span>
+                  04
+                </span>
+                <div>
+                  <h3>
+                    Small wins, remembered
+                  </h3>
+                  <p>
+                    Look back on the sessions that add up.
+                  </p>
+                </div>
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+      <section class="engineering wrap section" id="engineering" aria-labelledby="engineering-title">
+        <div class="section-intro">
+          <div>
+            <p class="eyebrow">
+              03 / UNDER THE SURFACE
+            </p>
+            <h2 id="engineering-title">
+              Designed with care.
+              <br>
+              Built with intention.
+            </h2>
+          </div>
+          <p>
+            A native Android project by
+            <a href="https://github.com/RonenGiladov">
+              Ronen Giladov
+            </a>
+            . Explore the decisions behind the experience—and the code that makes it work.
+          </p>
+        </div>
+        <div class="engineering-grid">
+          <article>
+            <span class="code-symbol" aria-hidden="true">
+              { }
+            </span>
+            <h3>
+              A clear session model
+            </h3>
+            <p>
+              Session phases and timer transitions live in a Kotlin engine, separate from the Compose screens. That
+              makes pause, rest, skip, and completion behavior directly testable.
+            </p>
+            <a
+              href="https://github.com/RonenGiladov/Stretchify/blob/main/app/src/main/java/com/stretchify/session/SessionEngine.kt">
+              Explore the session engine
+              <span aria-hidden="true">
+                ↗
+              </span>
+            </a>
+          </article>
+          <article>
+            <span class="code-symbol" aria-hidden="true">
+              ◷
+            </span>
+            <h3>
+              Continuity beyond the screen
+            </h3>
+            <p>
+              A session controller and Android foreground service coordinate active sessions, notification controls,
+              and timing as the app moves into the background.
+            </p>
+            <a
+              href="https://github.com/RonenGiladov/Stretchify/blob/main/app/src/main/java/com/stretchify/session/SessionService.kt">
+              See background session handling
+              <span aria-hidden="true">
+                ↗
+              </span>
+            </a>
+          </article>
+          <article>
+            <span class="code-symbol" aria-hidden="true">
+              ✳
+            </span>
+            <h3>
+              Personal by design
+            </h3>
+            <p>
+              Compose brings together customizable routine cards, multiple color themes, and a liquid shader theme with
+              a gradient fallback on older Android versions.
+            </p>
+            <a
+              href="https://github.com/RonenGiladov/Stretchify/blob/main/app/src/main/java/com/stretchify/ui/theme/Theme.kt">
+              See the theme system
+              <span aria-hidden="true">
+                ↗
+              </span>
+            </a>
+          </article>
+          <article>
+            <span class="code-symbol" aria-hidden="true">
+              ✓
+            </span>
+            <h3>
+              Behavior backed by tests
+            </h3>
+            <p>
+              Unit tests cover timing, progress, and repetition detection. Android instrumentation tests exercise
+              navigation, session controls, and background behavior.
+            </p>
+            <a href="https://github.com/RonenGiladov/Stretchify/tree/main/app/src/test/java/com/stretchify">
+              Browse the tests
+              <span aria-hidden="true">
+                ↗
+              </span>
+            </a>
+          </article>
+        </div>
+      </section>
+      <section class="closing wrap" aria-labelledby="closing-title">
+        <div>
+          <p class="eyebrow">
+            TAKE A LOOK AROUND
+          </p>
+          <h2 id="closing-title">
+            Take a movement break.
+            <br>
+            Explore what makes it work.
+          </h2>
+        </div>
+        <div class="closing-actions">
+          <a class="button light" href="https://github.com/RonenGiladov/Stretchify">
+            Explore on GitHub
+            <span aria-hidden="true">
+              ↗
+            </span>
+          </a>
+          <a class="light-link" href="#walkthrough">
+            Watch the walkthrough ↑
+          </a>
+        </div>
+      </section>
+    </main>
+    <footer class="wrap site-footer">
+      <a class="brand" href="#">
+        Stretchify
+        <span class="brand-dot">
+          .
+        </span>
+      </a>
+      <p>
+        Built by
+        <a href="https://github.com/RonenGiladov">
+          Ronen Giladov
+        </a>
+        · Kotlin
+        &amp;
+        Jetpack Compose
+      </p>
+      <a href="https://github.com/RonenGiladov/Stretchify/blob/main/THIRD_PARTY_NOTICES.md">
+        Credits
+        &amp;
+        licenses
+      </a>
+    </footer>
+    <dialog id="demo-dialog" aria-labelledby="demo-title">
+      <div class="dialog-heading">
+        <h2 id="demo-title">
+          Try Stretchify
+        </h2>
+        <button id="close-demo" class="icon-button" aria-label="Close interactive demo">
+          ×
+        </button>
+      </div>
+      <p>
+        Browse the Library, start a routine, and try a different theme. This is the Android app running in a remote
+        emulator.
+      </p>
+      <div id="emulator-container">
+      </div>
+      <p id="demo-status" role="status">
+        Starting the browser demo…
+      </p>
+      <p class="demo-note">
+        Interactive sessions depend on available streaming time. If the demo is busy or unavailable, the walkthrough is
+        always here.
+      </p>
+      <div class="dialog-links">
+        <a id="external-demo" target="_blank" rel="noopener noreferrer">
+          Open demo separately ↗
+        </a>
+        <a id="watch-instead" href="#walkthrough">
+          Watch the video instead
+        </a>
+      </div>
+    </dialog>
+  </body>
+</html>

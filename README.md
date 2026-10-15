@@ -1,5 +1,13 @@
 # Stretchify
 
+**[Demo & source — explore Stretchify](https://ronengiladov.github.io/Stretchify/)**
+
+Watch the 40-second walkthrough and explore real app screens. No installation or sign-in required.
+
+[![Preview the Stretchify app](docs/assets/social-preview.jpg)](https://ronengiladov.github.io/Stretchify/)
+
+[Showcase setup and maintenance](SHOWCASE.md)
+
 ![Stretchify wordmark](assets/branding/stretchify-wordmark.png)
 
 Stretchify is a native Android movement app built with Kotlin and Jetpack
