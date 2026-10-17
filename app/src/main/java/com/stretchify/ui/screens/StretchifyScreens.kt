@@ -586,7 +586,7 @@ private fun ScreenHeader(
                 Icon(
                     painter = painterResource(R.drawable.ic_settings),
                     contentDescription = null,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
@@ -627,7 +627,7 @@ fun HomeScreen(
             .safeDrawingPadding()
             .testTag("home-screen"),
         contentPadding = PaddingValues(start = 16.dp, top = 20.dp, end = 16.dp, bottom = 140.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
             ScreenHeader(
@@ -830,7 +830,7 @@ private fun DashboardGrid(
         gridOrigin = it.positionInWindow()
     }) {
         val gridWidth = constraints.maxWidth.toFloat()
-        val gap = with(density) { 12.dp.toPx() }
+        val gap = with(density) { 8.dp.toPx() }
         val heightUnit = with(density) { 120.dp.toPx() }
         val halfWidth = (gridWidth - gap) / 2f
         val hysteresis = with(density) { 8.dp.toPx() }
@@ -1438,7 +1438,7 @@ private fun LibraryScreen(
             .safeDrawingPadding()
             .testTag("library-screen"),
         contentPadding = PaddingValues(start = 16.dp, top = 20.dp, end = 16.dp, bottom = 140.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
             ScreenHeader("Library", "Find the right reset for how you feel.", onSettings = {
@@ -1690,7 +1690,7 @@ private fun ProgressScreen(
             .safeDrawingPadding()
             .testTag("progress-screen"),
         contentPadding = PaddingValues(start = 16.dp, top = 20.dp, end = 16.dp, bottom = 140.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
             ScreenHeader("Progress", "Small sessions add up to lasting mobility.", onSettings = {
